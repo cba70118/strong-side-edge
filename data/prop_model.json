@@ -1,0 +1,56 @@
+{
+ "receptions": {
+  "p_zero": 0.1467,
+  "ratio_k": 1.28493,
+  "ratio_p": -0.14407,
+  "phi_k": 0.93116,
+  "phi_p": 0.17253,
+  "n": 16845,
+  "cleared": true,
+  "band": [
+   0.25,
+   0.75
+  ]
+ },
+ "rec_yds": {
+  "p_zero": 0.1583,
+  "ratio_k": 2.07958,
+  "ratio_p": -0.17875,
+  "cv_k": 2.45841,
+  "cv_p": -0.3428,
+  "n": 16845,
+  "cleared": true,
+  "band": [
+   0.05,
+   0.95
+  ]
+ },
+ "rush_yds": {
+  "p_zero": 0.1388,
+  "ratio_k": 1.13837,
+  "ratio_p": -0.04324,
+  "cv_k": 5.3533,
+  "cv_p": -0.52318,
+  "n": 7341,
+  "cleared": true,
+  "band": [
+   0.05,
+   0.95
+  ]
+ },
+ "floors": {
+  "rec_yds": [
+   "proj_targets",
+   3.0
+  ],
+  "receptions": [
+   "proj_targets",
+   3.0
+  ],
+  "rush_yds": [
+   "proj_carries",
+   5.0
+  ]
+ },
+ "n_rows": 38334
+}

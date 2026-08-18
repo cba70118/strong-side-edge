@@ -1,0 +1,19 @@
+{
+  "project": "nfl-2026",
+  "row_cap": 20,
+  "confidence_floor": 0.55,
+  "stale_days": 45,
+  "half_life_days": {
+    "form": 21,
+    "personnel": 56,
+    "fit": 240,
+    "market": 240,
+    "structural": 1000
+  },
+  "sources": [
+    "graded",
+    "data",
+    "judgment",
+    "narrative"
+  ]
+}

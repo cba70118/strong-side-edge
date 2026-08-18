@@ -1,0 +1,171 @@
+{
+  "meta": {
+    "title": "The Sunday Number",
+    "season": 2026,
+    "week": 7,
+    "data_as_of": "Sat Oct 17, 6:40pm CT",
+    "sample": true
+  },
+  "season_stats": {
+    "record": "31-27-2",
+    "units": 4.82,
+    "roi_pct": 3.9,
+    "bets": 60,
+    "beat_close_pct": 61.7,
+    "avg_clv_pts": 1.4
+  },
+  "lede": "The board tightened all week and there is not much left on sides \u2014 books opened close and the market agreed with them, which is usually a sign to look elsewhere. Elsewhere this week is receiving props, where three games have injury-driven target redistribution that the prop lines have moved maybe half as much as they should. Two plays, both unders on yardage, both for the same structural reason. We're passing on eight of eleven games entirely.",
+  "markets": [
+    {
+      "type": "Sides",
+      "plays": 1,
+      "season_clv": 1.9,
+      "read": "Efficient board. One play, and it's a stale-number grab rather than a model call."
+    },
+    {
+      "type": "Totals",
+      "plays": 1,
+      "season_clv": -0.4,
+      "read": "Season CLV is negative here \u2014 we are not good at totals yet. Sizing stays small until that turns."
+    },
+    {
+      "type": "Props",
+      "plays": 2,
+      "season_clv": 2.6,
+      "read": "Best CLV of any market by a wide margin. This is where the process is actually working."
+    }
+  ],
+  "games": [
+    {
+      "kickoff": "Sun 12:00 CT",
+      "away": "Houston Texans",
+      "home": "Indianapolis Colts",
+      "spread": -2.5,
+      "total": 44.5,
+      "narrative": "The market has Indianapolis as a field-goal-ish home favorite, which prices these two as near-equals with home field doing the work. Our read agrees on the teams and disagrees on the pass rush: Houston's pressure rate over the last five games is well clear of where it sat early, and Indianapolis is starting a backup left tackle for the third straight week. Pressure rate stabilizes fast enough that five games is a real sample, and the line has not moved on the tackle news. The risk is obvious \u2014 if the tackle is activated and plays, the reason for this bet walks onto the field with him.",
+      "markets": [
+        {
+          "type": "Side",
+          "status": "play",
+          "selection": "Houston +2.5",
+          "price": -105,
+          "book": "Pinnacle",
+          "taken_at": "Sat 6:05pm",
+          "fair": -122,
+          "edge_pct": 3.6,
+          "stake_units": 1.1,
+          "thesis": "Backup LT for a third week is not in the number; Houston's pressure rate is real over a stabilized sample.",
+          "kill": "Starting LT upgraded to full participation, or the line moves to +1.5 before kickoff."
+        },
+        {
+          "type": "Total",
+          "status": "pass",
+          "reason": "44.5 sits right on our number. No disagreement, no bet."
+        },
+        {
+          "type": "Prop",
+          "status": "pass",
+          "reason": "Receiving lines already repriced after Wednesday's report \u2014 we're late."
+        }
+      ]
+    },
+    {
+      "kickoff": "Sun 12:00 CT",
+      "away": "Green Bay Packers",
+      "home": "Chicago Bears",
+      "spread": 1.5,
+      "total": 41.5,
+      "narrative": "A 41.5 in Chicago in late October is the market telling you it expects wind, and the forecast currently has sustained 18-22 mph off the lake. That is the one weather condition with a consistent, sizable effect on passing and kicking, and it is the rare case where we think the market has under-adjusted rather than over-adjusted. Both offenses are middling in neutral-script passing efficiency to begin with. The risk is that the forecast softens \u2014 wind predictions inside 24 hours move a lot, and if it drops under 12 this is a no-bet, not a smaller bet.",
+      "markets": [
+        {
+          "type": "Total",
+          "status": "play",
+          "selection": "Under 41.5",
+          "price": -110,
+          "book": "FanDuel",
+          "taken_at": "Sat 6:12pm",
+          "fair": -128,
+          "edge_pct": 3.1,
+          "stake_units": 0.6,
+          "thesis": "Sustained 18-22 mph wind is the one weather effect that reliably suppresses scoring, and 41.5 has not fully absorbed it.",
+          "kill": "Forecast wind drops below 12 mph sustained at kickoff."
+        },
+        {
+          "type": "Side",
+          "status": "pass",
+          "reason": "Pick-em game between two teams we rate as a pick-em. Nothing to say."
+        },
+        {
+          "type": "Prop",
+          "status": "pass",
+          "reason": "Correlated with the under we already have. Sizing it separately would double the same bet."
+        }
+      ]
+    },
+    {
+      "kickoff": "Sun 3:25 CT",
+      "away": "Los Angeles Chargers",
+      "home": "Denver Broncos",
+      "spread": -1.5,
+      "total": 47.5,
+      "narrative": "This is the props game. Denver's WR1 is out, and the market has moved the obvious beneficiary \u2014 the WR2 \u2014 while barely touching the tight end, who actually absorbed the larger share of vacated targets the last time this happened. But the play here is the other direction: the Chargers' RB receiving line is priced off a mean projection, and receiving yards are right-skewed enough that a mean clearing the line still leaves the under as the correct side. Our distribution puts P(over) at 0.46 against a line priced near even. The risk is script \u2014 if Denver jumps ahead early, checkdown volume goes up and the skew argument weakens.",
+      "markets": [
+        {
+          "type": "Prop",
+          "status": "play",
+          "selection": "LAC RB Under 34.5 receiving yards",
+          "price": -112,
+          "book": "DraftKings",
+          "taken_at": "Sat 6:20pm",
+          "fair": -132,
+          "edge_pct": 3.8,
+          "stake_units": 0.75,
+          "thesis": "Gamma-fit distribution puts P(over) at 0.46 despite a mean that clears the line \u2014 the market is pricing the mean.",
+          "kill": "Denver opens as a larger favorite than -3, which flips the script assumption."
+        },
+        {
+          "type": "Prop",
+          "status": "play",
+          "selection": "DEN TE Over 3.5 receptions",
+          "price": 104,
+          "book": "Caesars",
+          "taken_at": "Sat 6:22pm",
+          "fair": -118,
+          "edge_pct": 5.1,
+          "stake_units": 0.85,
+          "thesis": "Vacated target share historically flows to this TE, not the WR2 the market repriced; receptions are far less skewed than yards, so the over is live here.",
+          "kill": "TE appears on the injury report Saturday night, or the line moves to 4.5."
+        },
+        {
+          "type": "Side",
+          "status": "pass",
+          "reason": "Our number is Denver -2. The market is at -1.5. That is noise, not edge."
+        },
+        {
+          "type": "Total",
+          "status": "pass",
+          "reason": "47.5 matches our projection within half a point."
+        }
+      ]
+    }
+  ],
+  "passed": [
+    {
+      "game": "NYJ at NE",
+      "reason": "Both offenses below our confidence threshold to project at all. No number we trust."
+    },
+    {
+      "game": "MIA at BUF",
+      "reason": "Line moved three points on Thursday's news. Whatever was there is gone."
+    },
+    {
+      "game": "SEA at ARI",
+      "reason": "Our spread and the market's agree to within 0.4 points."
+    },
+    {
+      "game": "TB at ATL",
+      "reason": "Divisional rematch with a QB questionable \u2014 waiting for inactives was correct and we did not get the number."
+    }
+  ],
+  "footer_note": "Prices shopped across five books. Best available number shown; we took the best one."
+}

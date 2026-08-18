@@ -1,0 +1,34 @@
+{
+  "_comment": [
+    "Manual player resolution. Consulted BEFORE automatic matching.",
+    "",
+    "Every entry here is a genuine identity, verified against raw.players -",
+    "not a fuzzy guess. The automatic resolver reaches 97.8%; the residue is",
+    "almost entirely NICKNAME DIVERGENCE between feeds, which no string metric",
+    "should be trusted to bridge:",
+    "  SGO uses the legal/roster name, nflverse uses the common name.",
+    "  Cameron -> Cam, Kenneth -> Kenny, Chigoziem -> Chig,",
+    "  Jo'quavious -> Woody, Zonovan -> Bam.",
+    "A fuzzy matcher loose enough to join 'Jo'quavious Marks' to 'Woody Marks'",
+    "would also join players who are not the same person. Prefer an explicit",
+    "row over a looser threshold.",
+    "",
+    "NOTE ON TEAM DISAMBIGUATION: raw.players.latest_team is CURRENT, not",
+    "historical. Michael Carter (RB) reads TEN today but appears on ARI in",
+    "2025 SGO history, so team matching cannot separate him from Michael",
+    "Carter II (CB). Ambiguity by name alone must be resolved here.",
+    "",
+    "Keyed by the SGO playerID, which is stable. Add a row whenever",
+    "audit.unresolved_players is non-zero."
+  ],
+  "sportsgameodds": {
+    "JOQUAVIOUS_MARKS_1_NFL":  { "gsis_id": "00-0040583", "nflverse": "Woody Marks",            "pos": "RB",  "note": "legal name Jo'quavious" },
+    "CHIGOZIEM_OKONOKWO_1_NFL": { "gsis_id": "00-0037809", "nflverse": "Chig Okonkwo",          "pos": "TE",  "note": "nickname; NOTE the SGO playerID misspells the surname as OKONOKWO while their name field spells it correctly - always copy the key from ref.player_xref, never construct it from the name" },
+    "KENNETH_GAINWELL_1_NFL":  { "gsis_id": "00-0036919", "nflverse": "Kenny Gainwell",         "pos": "RB",  "note": "nickname" },
+    "ZONOVAN_KNIGHT_1_NFL":    { "gsis_id": "00-0037157", "nflverse": "Bam Knight",             "pos": "RB",  "note": "nickname" },
+    "CAMERON_WARD_1_NFL":      { "gsis_id": "00-0040676", "nflverse": "Cam Ward",               "pos": "QB",  "note": "nickname" },
+    "CAMERON_SKATTEBO_1_NFL":  { "gsis_id": "00-0040715", "nflverse": "Cam Skattebo",           "pos": "RB",  "note": "nickname" },
+    "JACORY_MERRITT_1_NFL":    { "gsis_id": "00-0040242", "nflverse": "Jacory Croskey-Merritt", "pos": "RB",  "note": "SGO drops the hyphenated first surname" },
+    "MICHAEL_CARTER_1_NFL":    { "gsis_id": "00-0036924", "nflverse": "Michael Carter",         "pos": "RB",  "note": "RB, NOT Michael Carter II (CB, 00-0036501)" }
+  }
+}

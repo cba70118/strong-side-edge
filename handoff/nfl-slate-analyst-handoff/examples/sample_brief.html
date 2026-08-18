@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The Sunday Number — 2026 Week 7</title>
+<style>
+:root{color-scheme:light dark}
+*{box-sizing:border-box}
+.brief{
+  color-scheme:light;
+  --plane:#f9f9f7; --surface:#fcfcfb; --ink:#0b0b0b; --ink2:#52514e; --muted:#898781;
+  --rule:#e1e0d9; --axis:#c3c2b7; --ring:rgba(11,11,11,.10);
+  --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a;
+  --good:#0ca30c; --crit:#d03b3b; --warn:#fab219; --goodtext:#006300;
+  --track:#eceae4;
+}
+@media (prefers-color-scheme:dark){
+  :root:where(:not([data-theme="light"])) .brief{
+    color-scheme:dark;
+    --plane:#0d0d0d; --surface:#1a1a19; --ink:#fff; --ink2:#c3c2b7; --muted:#898781;
+    --rule:#2c2c2a; --axis:#383835; --ring:rgba(255,255,255,.10);
+    --s1:#3987e5; --s2:#d95926; --s3:#199e70;
+    --goodtext:#0ca30c; --track:#262624;
+  }
+}
+:root[data-theme="dark"] .brief{
+  color-scheme:dark;
+  --plane:#0d0d0d; --surface:#1a1a19; --ink:#fff; --ink2:#c3c2b7; --muted:#898781;
+  --rule:#2c2c2a; --axis:#383835; --ring:rgba(255,255,255,.10);
+  --s1:#3987e5; --s2:#d95926; --s3:#199e70;
+  --goodtext:#0ca30c; --track:#262624;
+}
+
+.brief{
+  font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
+  background:var(--plane); color:var(--ink);
+  margin:0; padding:28px 20px 56px; line-height:1.5;
+}
+.wrap{max-width:940px;margin:0 auto}
+.card{background:var(--surface);border:1px solid var(--ring);border-radius:10px;padding:18px 20px;margin-bottom:14px}
+h1{font-size:30px;line-height:1.15;margin:0 0 4px;letter-spacing:-.02em}
+h2{font-size:12px;letter-spacing:.10em;text-transform:uppercase;color:var(--muted);margin:0 0 12px;font-weight:600}
+h3{font-size:17px;margin:0;letter-spacing:-.01em}
+p{margin:0 0 10px}
+.sub{color:var(--ink2);font-size:13px}
+.num{font-variant-numeric:tabular-nums}
+.pos{color:var(--goodtext)} .neg{color:var(--crit)}
+
+/* banner */
+.banner{background:var(--warn);color:#0b0b0b;border-radius:8px;padding:9px 14px;
+  font-size:13px;font-weight:600;margin-bottom:14px;display:flex;gap:9px;align-items:center}
+
+/* masthead */
+.mast{display:flex;justify-content:space-between;align-items:flex-end;gap:18px;flex-wrap:wrap;
+  border-bottom:2px solid var(--ink);padding-bottom:14px;margin-bottom:16px}
+.recline{font-size:13px;color:var(--ink2);text-align:right}
+.recline b{color:var(--ink);font-size:15px}
+.toggle{background:none;border:1px solid var(--ring);color:var(--ink2);border-radius:6px;
+  padding:4px 9px;font-size:11px;cursor:pointer;font-family:inherit}
+
+/* KPI tiles */
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px}
+.kpi{background:var(--surface);border:1px solid var(--ring);border-radius:10px;padding:13px 15px}
+.kpi .lab{font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin-bottom:5px}
+.kpi .val{font-size:26px;font-weight:600;letter-spacing:-.02em;line-height:1.1}
+.kpi .note{font-size:11px;color:var(--muted);margin-top:3px}
+.kpi.flag{border-color:var(--axis);border-width:1px;box-shadow:inset 3px 0 0 var(--s1)}
+
+/* market strip */
+.mkt{display:grid;grid-template-columns:auto auto 1fr;gap:12px;align-items:baseline;
+  padding:11px 0;border-bottom:1px solid var(--rule)}
+.mkt:last-child{border-bottom:none}
+.chip{display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:600;min-width:74px}
+.dot{width:10px;height:10px;border-radius:3px;flex:none}
+.d1{background:var(--s1)} .d2{background:var(--s2)} .d3{background:var(--s3)}
+.mkt .co{font-size:12px;color:var(--muted);white-space:nowrap}
+.mkt .rd{font-size:13px;color:var(--ink2)}
+
+/* game blocks */
+.game{background:var(--surface);border:1px solid var(--ring);border-radius:10px;
+  padding:16px 18px;margin-bottom:12px}
+.ghead{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;
+  align-items:baseline;border-bottom:1px solid var(--rule);padding-bottom:10px;margin-bottom:11px}
+.kick{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.lines{font-size:12.5px;color:var(--ink2);display:flex;gap:14px;flex-wrap:wrap}
+.lines span b{color:var(--ink)}
+.narr{font-size:14.5px;color:var(--ink);margin-bottom:13px}
+
+/* market row inside a game */
+.row{border-left:3px solid var(--axis);padding:9px 0 9px 13px;margin-bottom:9px}
+.row.s1{border-left-color:var(--s1)} .row.s2{border-left-color:var(--s2)} .row.s3{border-left-color:var(--s3)}
+.row.passrow{border-left-color:var(--axis);opacity:.72}
+.rtop{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;margin-bottom:4px}
+.tag{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.sel{font-size:15px;font-weight:600}
+.px{font-size:13px;color:var(--ink2)}
+.passtag{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);
+  border:1px solid var(--axis);border-radius:4px;padding:1px 6px;font-weight:600}
+.meta{font-size:12.5px;color:var(--ink2);margin-top:3px}
+.meta b{color:var(--ink);font-weight:600}
+.kill{font-size:12px;color:var(--muted);margin-top:3px}
+.kill::before{content:"Kill: ";font-weight:600;letter-spacing:.03em}
+
+/* edge bar */
+.edge{display:flex;align-items:center;gap:8px;margin-top:6px}
+.track{width:118px;height:7px;background:var(--track);border-radius:4px;overflow:hidden;flex:none}
+.fill{height:100%;border-radius:4px}
+.edge .v{font-size:12.5px;font-weight:600}
+
+/* card table */
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--muted);font-weight:600;padding:0 10px 8px 0;border-bottom:1px solid var(--axis)}
+td{padding:9px 10px 9px 0;border-bottom:1px solid var(--rule);vertical-align:top}
+tr:last-child td{border-bottom:none}
+td.n{font-variant-numeric:tabular-nums;white-space:nowrap}
+
+ul.passed{list-style:none;padding:0;margin:0;font-size:13.5px}
+ul.passed li{padding:7px 0;border-bottom:1px solid var(--rule);color:var(--ink2)}
+ul.passed li:last-child{border-bottom:none}
+ul.passed b{color:var(--ink)}
+
+footer{font-size:11.5px;color:var(--muted);margin-top:18px;padding-top:14px;
+  border-top:1px solid var(--rule);line-height:1.65}
+
+@media print{
+  .brief{background:#fff;--plane:#fff;--surface:#fff;--ink:#000;--ink2:#333;padding:0}
+  .toggle{display:none}
+  .game,.card,.kpi{break-inside:avoid;border-color:#ccc}
+}
+@media (max-width:620px){
+  .mkt{grid-template-columns:1fr;gap:4px}
+  h1{font-size:24px}
+  .kpi .val{font-size:22px}
+}
+</style></head>
+<body class="brief"><div class="wrap">
+<div class="banner">⚠ SAMPLE DATA — every line, price, and figure below is illustrative. Do not bet from this page.</div>
+<div class="mast">
+ <div>
+  <h1>The Sunday Number</h1>
+  <div class="sub">2026 · Week 7 · data as of Sat Oct 17, 6:40pm CT</div>
+ </div>
+ <div class="recline">
+  <div><b class="num">31-27-2</b> season</div>
+  <div class="num">+4.82u · +3.9% ROI</div>
+  <button class="toggle" id="tt" type="button">Toggle theme</button>
+ </div>
+</div>
+
+<div class="kpis"><div class="kpi"><div class="lab">Units</div><div class="val num pos">+4.82</div><div class="note">31-27-2</div></div><div class="kpi"><div class="lab">ROI</div><div class="val num pos">+3.9%</div><div class="note">60 bets</div></div><div class="kpi flag"><div class="lab">Beat the close</div><div class="val num pos">61.7%</div><div class="note">the real scorecard</div></div><div class="kpi flag"><div class="lab">Avg CLV</div><div class="val num pos">+1.40 pts</div><div class="note">probability points</div></div></div>
+
+<div class="card"><h2>The Week</h2><p>The board tightened all week and there is not much left on sides — books opened close and the market agreed with them, which is usually a sign to look elsewhere. Elsewhere this week is receiving props, where three games have injury-driven target redistribution that the prop lines have moved maybe half as much as they should. Two plays, both unders on yardage, both for the same structural reason. We&#x27;re passing on eight of eleven games entirely.</p></div>
+
+<div class="card"><h2>By Market</h2><div class="mkt"><span class="chip"><span class="dot d1"></span>Sides</span><span class="co num">1 play(s) · season CLV <span class="pos">+1.9 pts</span></span><span class="rd">Efficient board. One play, and it&#x27;s a stale-number grab rather than a model call.</span></div><div class="mkt"><span class="chip"><span class="dot d2"></span>Totals</span><span class="co num">1 play(s) · season CLV <span class="neg">-0.4 pts</span></span><span class="rd">Season CLV is negative here — we are not good at totals yet. Sizing stays small until that turns.</span></div><div class="mkt"><span class="chip"><span class="dot d3"></span>Props</span><span class="co num">2 play(s) · season CLV <span class="pos">+2.6 pts</span></span><span class="rd">Best CLV of any market by a wide margin. This is where the process is actually working.</span></div></div>
+
+<h2 style="margin:22px 0 12px">The Board</h2>
+<div class="game">
+ <div class="ghead">
+  <div><div class="kick">Sun 12:00 CT</div>
+   <h3>Houston Texans at Indianapolis Colts</h3></div>
+  <div class="lines"><span>Spread <b class="num">Indianapolis Colts -2.5</b></span><span>Total <b class="num">44.5</b></span><span>Implied <b class="num">Houston Texans 21.0 · Indianapolis Colts 23.5</b></span></div>
+ </div>
+ <p class="narr">The market has Indianapolis as a field-goal-ish home favorite, which prices these two as near-equals with home field doing the work. Our read agrees on the teams and disagrees on the pass rush: Houston&#x27;s pressure rate over the last five games is well clear of where it sat early, and Indianapolis is starting a backup left tackle for the third straight week. Pressure rate stabilizes fast enough that five games is a real sample, and the line has not moved on the tackle news. The risk is obvious — if the tackle is activated and plays, the reason for this bet walks onto the field with him.</p>
+ <div class="row s1"><div class="rtop"><span class="tag">Side</span><span class="sel">Houston +2.5</span><span class="px num">-105 · Pinnacle</span></div><div class="meta">fair <b class="num">-122</b> · stake <b class="num">1.10u</b> · taken Sat 6:05pm</div><div class="edge"><div class="track"><div class="fill" style="width:45%;background:var(--s1)"></div></div><span class="v num pos">+3.6% edge</span></div><div class="meta">Backup LT for a third week is not in the number; Houston&#x27;s pressure rate is real over a stabilized sample.</div><div class="kill">Starting LT upgraded to full participation, or the line moves to +1.5 before kickoff.</div></div><div class="row passrow"><div class="rtop"><span class="tag">Total</span><span class="passtag">Pass</span></div><div class="meta">44.5 sits right on our number. No disagreement, no bet.</div></div><div class="row passrow"><div class="rtop"><span class="tag">Prop</span><span class="passtag">Pass</span></div><div class="meta">Receiving lines already repriced after Wednesday&#x27;s report — we&#x27;re late.</div></div>
+</div><div class="game">
+ <div class="ghead">
+  <div><div class="kick">Sun 12:00 CT</div>
+   <h3>Green Bay Packers at Chicago Bears</h3></div>
+  <div class="lines"><span>Spread <b class="num">Chicago Bears +1.5</b></span><span>Total <b class="num">41.5</b></span><span>Implied <b class="num">Green Bay Packers 21.5 · Chicago Bears 20.0</b></span></div>
+ </div>
+ <p class="narr">A 41.5 in Chicago in late October is the market telling you it expects wind, and the forecast currently has sustained 18-22 mph off the lake. That is the one weather condition with a consistent, sizable effect on passing and kicking, and it is the rare case where we think the market has under-adjusted rather than over-adjusted. Both offenses are middling in neutral-script passing efficiency to begin with. The risk is that the forecast softens — wind predictions inside 24 hours move a lot, and if it drops under 12 this is a no-bet, not a smaller bet.</p>
+ <div class="row s2"><div class="rtop"><span class="tag">Total</span><span class="sel">Under 41.5</span><span class="px num">-110 · FanDuel</span></div><div class="meta">fair <b class="num">-128</b> · stake <b class="num">0.60u</b> · taken Sat 6:12pm</div><div class="edge"><div class="track"><div class="fill" style="width:39%;background:var(--s2)"></div></div><span class="v num pos">+3.1% edge</span></div><div class="meta">Sustained 18-22 mph wind is the one weather effect that reliably suppresses scoring, and 41.5 has not fully absorbed it.</div><div class="kill">Forecast wind drops below 12 mph sustained at kickoff.</div></div><div class="row passrow"><div class="rtop"><span class="tag">Side</span><span class="passtag">Pass</span></div><div class="meta">Pick-em game between two teams we rate as a pick-em. Nothing to say.</div></div><div class="row passrow"><div class="rtop"><span class="tag">Prop</span><span class="passtag">Pass</span></div><div class="meta">Correlated with the under we already have. Sizing it separately would double the same bet.</div></div>
+</div><div class="game">
+ <div class="ghead">
+  <div><div class="kick">Sun 3:25 CT</div>
+   <h3>Los Angeles Chargers at Denver Broncos</h3></div>
+  <div class="lines"><span>Spread <b class="num">Denver Broncos -1.5</b></span><span>Total <b class="num">47.5</b></span><span>Implied <b class="num">Los Angeles Chargers 23.0 · Denver Broncos 24.5</b></span></div>
+ </div>
+ <p class="narr">This is the props game. Denver&#x27;s WR1 is out, and the market has moved the obvious beneficiary — the WR2 — while barely touching the tight end, who actually absorbed the larger share of vacated targets the last time this happened. But the play here is the other direction: the Chargers&#x27; RB receiving line is priced off a mean projection, and receiving yards are right-skewed enough that a mean clearing the line still leaves the under as the correct side. Our distribution puts P(over) at 0.46 against a line priced near even. The risk is script — if Denver jumps ahead early, checkdown volume goes up and the skew argument weakens.</p>
+ <div class="row s3"><div class="rtop"><span class="tag">Prop</span><span class="sel">LAC RB Under 34.5 receiving yards</span><span class="px num">-112 · DraftKings</span></div><div class="meta">fair <b class="num">-132</b> · stake <b class="num">0.75u</b> · taken Sat 6:20pm</div><div class="edge"><div class="track"><div class="fill" style="width:48%;background:var(--s3)"></div></div><span class="v num pos">+3.8% edge</span></div><div class="meta">Gamma-fit distribution puts P(over) at 0.46 despite a mean that clears the line — the market is pricing the mean.</div><div class="kill">Denver opens as a larger favorite than -3, which flips the script assumption.</div></div><div class="row s3"><div class="rtop"><span class="tag">Prop</span><span class="sel">DEN TE Over 3.5 receptions</span><span class="px num">+104 · Caesars</span></div><div class="meta">fair <b class="num">-118</b> · stake <b class="num">0.85u</b> · taken Sat 6:22pm</div><div class="edge"><div class="track"><div class="fill" style="width:64%;background:var(--s3)"></div></div><span class="v num pos">+5.1% edge</span></div><div class="meta">Vacated target share historically flows to this TE, not the WR2 the market repriced; receptions are far less skewed than yards, so the over is live here.</div><div class="kill">TE appears on the injury report Saturday night, or the line moves to 4.5.</div></div><div class="row passrow"><div class="rtop"><span class="tag">Side</span><span class="passtag">Pass</span></div><div class="meta">Our number is Denver -2. The market is at -1.5. That is noise, not edge.</div></div><div class="row passrow"><div class="rtop"><span class="tag">Total</span><span class="passtag">Pass</span></div><div class="meta">47.5 matches our projection within half a point.</div></div>
+</div>
+
+<div class="card"><h2>Passed On Entirely</h2><ul class="passed"><li><b>NYJ at NE</b> — Both offenses below our confidence threshold to project at all. No number we trust.</li><li><b>MIA at BUF</b> — Line moved three points on Thursday&#x27;s news. Whatever was there is gone.</li><li><b>SEA at ARI</b> — Our spread and the market&#x27;s agree to within 0.4 points.</li><li><b>TB at ATL</b> — Divisional rematch with a QB questionable — waiting for inactives was correct and we did not get the number.</li></ul></div>
+
+<div class="card"><h2>The Card</h2><table><thead><tr>
+ <th>Game</th><th>Market</th><th>Play</th><th>Price</th><th>Book</th>
+ <th>Fair</th><th>Edge</th><th>Stake</th></tr></thead>
+ <tbody><tr>
+ <td>Houston Texans @ Indianapolis Colts</td>
+ <td><span class="dot d1" style="display:inline-block;
+   margin-right:6px;vertical-align:middle"></span>Side</td>
+ <td><b>Houston +2.5</b></td>
+ <td class="n">-105</td>
+ <td class="n">Pinnacle</td>
+ <td class="n">-122</td>
+ <td class="n pos">+3.6%</td>
+ <td class="n">1.10u</td>
+</tr><tr>
+ <td>Green Bay Packers @ Chicago Bears</td>
+ <td><span class="dot d2" style="display:inline-block;
+   margin-right:6px;vertical-align:middle"></span>Total</td>
+ <td><b>Under 41.5</b></td>
+ <td class="n">-110</td>
+ <td class="n">FanDuel</td>
+ <td class="n">-128</td>
+ <td class="n pos">+3.1%</td>
+ <td class="n">0.60u</td>
+</tr><tr>
+ <td>Los Angeles Chargers @ Denver Broncos</td>
+ <td><span class="dot d3" style="display:inline-block;
+   margin-right:6px;vertical-align:middle"></span>Prop</td>
+ <td><b>LAC RB Under 34.5 receiving yards</b></td>
+ <td class="n">-112</td>
+ <td class="n">DraftKings</td>
+ <td class="n">-132</td>
+ <td class="n pos">+3.8%</td>
+ <td class="n">0.75u</td>
+</tr><tr>
+ <td>Los Angeles Chargers @ Denver Broncos</td>
+ <td><span class="dot d3" style="display:inline-block;
+   margin-right:6px;vertical-align:middle"></span>Prop</td>
+ <td><b>DEN TE Over 3.5 receptions</b></td>
+ <td class="n">+104</td>
+ <td class="n">Caesars</td>
+ <td class="n">-118</td>
+ <td class="n pos">+5.1%</td>
+ <td class="n">0.85u</td>
+</tr></tbody></table></div>
+
+<footer>
+ Every play above is graded at the <b>closing line</b>, not at the final score. A week that
+ beat the close and lost is a good week; a week that won against every closing number was luck.
+ Prices shown are what was available at the book and time listed — shop your own number before
+ you take it.<br>
+ Prices shopped across five books. Best available number shown; we took the best one.<br>
+ Generated Sat Oct 17, 6:40pm CT. For entertainment and analysis. Bet only what you can
+ afford to lose. If gambling stops being fun, call 1-800-GAMBLER.
+</footer>
+</div><script>
+(function(){
+ var b=document.getElementById('tt');if(!b)return;
+ b.addEventListener('click',function(){
+   var r=document.documentElement,
+       cur=r.getAttribute('data-theme'),
+       dark=cur?cur==='dark':matchMedia('(prefers-color-scheme:dark)').matches;
+   r.setAttribute('data-theme',dark?'light':'dark');
+ });
+})();
+</script></body></html>

@@ -1,0 +1,55 @@
+{
+  "_comment": [
+    "Manual team-name resolution. Self-aliases and full-name aliases are seeded",
+    "automatically by init_db.py from ref.team; this file holds only what cannot",
+    "be derived - abbreviation schemes that differ from nflverse, and relocation",
+    "legacy codes. audit.unresolved_games is the view that tells you when a row",
+    "belongs here."
+  ],
+  "pfr": {
+    "KAN": "KC",
+    "GNB": "GB",
+    "NWE": "NE",
+    "SFO": "SF",
+    "TAM": "TB",
+    "NOR": "NO",
+    "LVR": "LV",
+    "JAX": "JAX",
+    "SDG": "LAC",
+    "STL": "LA",
+    "OAK": "LV",
+    "RAM": "LA",
+    "CLT": "IND",
+    "CRD": "ARI",
+    "RAV": "BAL",
+    "HTX": "HOU",
+    "OTI": "TEN",
+    "WAS": "WAS"
+  },
+  "legacy": {
+    "OAK": "LV",
+    "SD": "LAC",
+    "STL": "LA",
+    "LAR": "LA",
+    "WSH": "WAS",
+    "ARZ": "ARI",
+    "BLT": "BAL",
+    "CLV": "CLE",
+    "HST": "HOU",
+    "SL": "LA",
+    "AZ": "ARI"
+  },
+  "espn": {
+    "WSH": "WAS",
+    "LAR": "LA"
+  },
+  "_the_odds_api_note": [
+    "Full-name aliases are auto-seeded from ref.team for CURRENT franchises",
+    "only. The Rams are pinned explicitly because LA and LAR share the name",
+    "'Los Angeles Rams' in nflverse's team table, and nflverse schedules use",
+    "LA. Without this, all 17 Rams games orphan from the spine."
+  ],
+  "the_odds_api": {
+    "Los Angeles Rams": "LA"
+  }
+}

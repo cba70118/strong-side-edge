@@ -1,0 +1,40 @@
+# secrets
+.env
+*.key
+
+# database + caches
+data/*.duckdb
+data/*.duckdb.wal
+data/cache/
+__pycache__/
+*.pyc
+
+# scratch
+scratch/
+*.tmp
+
+# site passphrase - never commit
+SITE_PASSWORD.txt
+
+# THIRD-PARTY CONTENT. Verbatim Move The Line transcripts are not ours to
+# republish, so they stay out of the repository entirely rather than relying on
+# the site gate. sql/08_analyst_take.sql keeps the structured positions, which
+# are short paraphrases and our own reading.
+handoff/transcripts/
+sql/07_transcript.sql
+dataset_youtube-video-transcript_*.json
+
+# intermediate build output kept out of history
+week01*.html
+week01*.json
+preview*.html
+design_options.html
+team_pages.html
+
+# LOGS CONTAIN SECRETS. snapshot_odds.py surfaces the request URL on a network
+# error, and that URL carries ?apiKey=... in plaintext. Never commit logs.
+data/*.log
+*.log
+
+# binary drops that are inputs, not source
+*.zip

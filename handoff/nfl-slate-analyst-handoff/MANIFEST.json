@@ -1,0 +1,245 @@
+{
+  "name": "nfl-slate-analyst",
+  "version": "3.0.0",
+  "packaged": "2026-08-16",
+  "kind": "agent-skill",
+  "summary": "Logical NFL data analyst reasoning from two independent lenses — football process and betting market — that bets only where they disagree by more than model error, and publishes a weekly HTML brief. v3.0 grounds the methodology in the documented practice of the best public NFL modelers (Koerner, Massey-Peabody, Baldwin, Schatz, Cole, FPI, Elo) via a modeler playbook reference, three new reasoning rules, and a system architecture spec.",
+  "scope": [
+    "sides",
+    "totals",
+    "player-props"
+  ],
+  "language": "python3",
+  "runtime_dependencies": [
+    "numpy",
+    "scipy",
+    "pandas"
+  ],
+  "optional_dependencies": [
+    "jsonschema"
+  ],
+  "network_required": false,
+  "network_required_for": [
+    "skill/scripts/key_numbers.py",
+    "live odds retrieval"
+  ],
+  "secrets_included": false,
+  "secrets_required": [
+    "odds feed API key (operator-supplied)"
+  ],
+  "entry_points": {
+    "agent": {
+      "path": "skill/SKILL.md",
+      "description": "Primary interface. An LLM agent reads this to adopt the workflow; references load on demand."
+    },
+    "render_brief": {
+      "command": "python3 skill/scripts/build_brief.py <week.json> -o <out.html>",
+      "input_schema": "schema/week.schema.json",
+      "description": "Renders the weekly one-pager. Validates input and rejects any play missing a thesis or kill condition."
+    },
+    "render_demo": {
+      "command": "python3 skill/scripts/build_brief.py --sample -o out.html"
+    },
+    "market_math": {
+      "path": "skill/scripts/market.py",
+      "importable": true,
+      "exports": [
+        "fair_probs",
+        "devig_multiplicative",
+        "devig_additive",
+        "devig_power",
+        "devig_shin",
+        "recommend_devig",
+        "edge",
+        "kelly",
+        "size_bet",
+        "clv",
+        "spread_to_winprob",
+        "team_totals",
+        "cross_market_check"
+      ]
+    },
+    "props_math": {
+      "path": "skill/scripts/props.py",
+      "importable": true,
+      "exports": [
+        "GameEnvironment",
+        "ReceiverProjection",
+        "RusherProjection",
+        "gamma_from_mean_cv",
+        "negbin_from_mean_var",
+        "anytime_td_prob",
+        "prob_over",
+        "props_vs_team_total"
+      ]
+    },
+    "empirical_constants": {
+      "command": "python3 skill/scripts/key_numbers.py --since 2018 [--json]",
+      "network_required": true,
+      "description": "Recomputes key numbers, home field advantage, margin dispersion, and the spread→win-probability curve from live nflverse results."
+    },
+    "verify": {
+      "command": "./verify.sh [--network]",
+      "description": "Exit 0 means every script runs and every self-test passes."
+    }
+  },
+  "files": [
+    {
+      "path": "README.md",
+      "role": "handoff documentation"
+    },
+    {
+      "path": "ROADMAP.md",
+      "role": "prioritized companion-skill plan"
+    },
+    {
+      "path": "requirements.txt",
+      "role": "python dependencies"
+    },
+    {
+      "path": "verify.sh",
+      "role": "package health check"
+    },
+    {
+      "path": "nfl-slate-analyst.skill",
+      "role": "installable zip of skill/"
+    },
+    {
+      "path": "skill/SKILL.md",
+      "role": "agent instructions"
+    },
+    {
+      "path": "skill/references/market-math.md",
+      "role": "reference: devig, key numbers, Kelly, CLV, correlation"
+    },
+    {
+      "path": "skill/references/football-metrics.md",
+      "role": "reference: metric stability, EPA, opponent adjustment, injury valuation"
+    },
+    {
+      "path": "skill/references/props-modeling.md",
+      "role": "reference: usage tree, distributions, traps"
+    },
+    {
+      "path": "skill/references/data-sources.md",
+      "role": "reference: verified URLs, API usage, refresh cadence"
+    },
+    {
+      "path": "skill/references/brief-format.md",
+      "role": "reference: editorial spec for the weekly brief"
+    },
+    {
+      "path": "skill/references/modeler-playbook.md",
+      "role": "reference: how the best public NFL modelers think, principle-by-principle (new in 3.0)"
+    },
+    {
+      "path": "skill/scripts/market.py",
+      "role": "script: odds math (self-testing)"
+    },
+    {
+      "path": "skill/scripts/props.py",
+      "role": "script: prop projection (self-testing)"
+    },
+    {
+      "path": "skill/scripts/key_numbers.py",
+      "role": "script: empirical constants from live data"
+    },
+    {
+      "path": "skill/scripts/build_brief.py",
+      "role": "script: HTML brief renderer (validating)"
+    },
+    {
+      "path": "schema/week.schema.json",
+      "role": "JSON Schema for brief input"
+    },
+    {
+      "path": "templates/week_template.json",
+      "role": "valid example week file"
+    },
+    {
+      "path": "examples/sample_brief.html",
+      "role": "rendered output example"
+    },
+    {
+      "path": "docs/modelers-guide.md",
+      "role": "research: top public NFL modelers, their processes, and linked sources (new in 3.0)"
+    },
+    {
+      "path": "docs/architecture-spec.md",
+      "role": "six-layer logic spec for the surrounding system; build order maps to ROADMAP Tier 1 (new in 3.0)"
+    }
+  ],
+  "data_sources": [
+    {
+      "name": "nflverse",
+      "cost": "free",
+      "auth": "none",
+      "base": "https://github.com/nflverse/nflverse-data/releases/download/",
+      "assets": [
+        "pbp",
+        "stats_player",
+        "snap_counts",
+        "rosters",
+        "depth_charts",
+        "injuries",
+        "ftn_charting",
+        "pbp_participation"
+      ],
+      "schedules_with_lines": "https://raw.githubusercontent.com/nflverse/nfldata/master/data/games.csv",
+      "verified_200_at_packaging": true
+    },
+    {
+      "name": "The Odds API",
+      "cost": "paid (free tier available)",
+      "auth": "api key, operator-supplied",
+      "sport_key": "americanfootball_nfl",
+      "markets": [
+        "h2h",
+        "spreads",
+        "totals",
+        "outrights",
+        "player_pass_yds",
+        "player_rush_yds",
+        "player_reception_yds",
+        "player_receptions",
+        "player_anytime_td"
+      ]
+    }
+  ],
+  "empirical_constants": {
+    "computed_from": "nflverse games.csv, seasons 2018-2025, n=2227",
+    "margin_lands_on_3_pct": 14.82,
+    "margin_lands_on_7_pct": 8.49,
+    "home_field_advantage_pts": 1.72,
+    "residual_sd_margin_vs_spread": 12.755,
+    "raw_margin_sd": 14.255,
+    "note": "These replace the conventional stale values (HFA 2.5-3, SD ~14). Recompute each offseason with key_numbers.py; do not treat as permanent."
+  },
+  "invariants": [
+    "Convert odds to no-vig probability before forming a view.",
+    "Edge is measured against no-vig prices, never raw prices.",
+    "Fractional Kelly only; quarter Kelly default, 2-3% of bankroll hard cap per bet.",
+    "Edges under 2% against sharp prices are reported as no edge.",
+    "Passes are published, not hidden.",
+    "Grade at the closing line, not the final score.",
+    "Empirical constants are recomputed, never memorized.",
+    "If real odds were not retrieved, the brief renders a SAMPLE DATA banner.",
+    "Model inputs are weighted by out-of-sample predictive power, never in-sample fit; unvalidated factors are downweighted and named.",
+    "Rankings collapse into tiers when gaps are inside the error bar.",
+    "Early-season output is prior-dominated and labeled as such, with in-season data phased in as metrics stabilize."
+  ],
+  "verified_at_packaging": {
+    "all_scripts_self_test": true,
+    "nflverse_urls_http_200": true,
+    "brief_renders_light_dark_print": true,
+    "palette_cvd_safe_all_pairs_both_modes": true,
+    "input_validation_rejects_missing_kill_condition": true
+  },
+  "limitations": [
+    "Weeks 1-4 samples are weak; the skill leans on prior-season priors and preseason market prices.",
+    "Team-level defensive metrics are the noisiest common inputs in football analytics.",
+    "CLV is a valid scorecard only against markets efficient at close.",
+    "No automated data pipeline included; week files are assembled manually or by a companion system (see ROADMAP.md Tier 1).",
+    "This finds mispriced markets; it does not predict game outcomes, and will have losing stretches indistinguishable from variance."
+  ]
+}

@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/nfl-slate-analyst/week.schema.json",
+  "title": "NFL Slate Analyst — Weekly Brief Input",
+  "description": "Input file consumed by skill/scripts/build_brief.py to render the weekly HTML brief. Narrative fields are the analytical product and cannot be generated from data.",
+  "type": "object",
+  "required": ["meta", "season_stats", "lede", "games"],
+  "additionalProperties": false,
+  "properties": {
+    "meta": {
+      "type": "object",
+      "required": ["season", "week", "data_as_of"],
+      "additionalProperties": false,
+      "properties": {
+        "title": { "type": "string", "description": "Brief name shown in the masthead" },
+        "season": { "type": "integer", "minimum": 1999 },
+        "week": { "type": "integer", "minimum": 1, "maximum": 23 },
+        "data_as_of": {
+          "type": "string",
+          "description": "Human-readable timestamp. Required: a brief built Thursday and read Sunday is stale and the reader must know which one they hold."
+        },
+        "sample": {
+          "type": "boolean",
+          "default": false,
+          "description": "true renders a visible SAMPLE DATA banner. Must be true whenever prices are illustrative rather than retrieved."
+        }
+      }
+    },
+    "season_stats": {
+      "type": "object",
+      "required": ["units", "roi_pct", "bets", "beat_close_pct", "avg_clv_pts"],
+      "additionalProperties": false,
+      "properties": {
+        "record": { "type": "string", "examples": ["31-27-2"] },
+        "units": { "type": "number", "description": "Net units won or lost" },
+        "roi_pct": { "type": "number" },
+        "bets": { "type": "integer", "minimum": 0 },
+        "beat_close_pct": {
+          "type": "number", "minimum": 0, "maximum": 100,
+          "description": "Share of bets that beat the closing line. The primary scorecard."
+        },
+        "avg_clv_pts": {
+          "type": "number",
+          "description": "Average closing line value in probability points."
+        }
+      }
+    },
+    "lede": {
+      "type": "string", "minLength": 1,
+      "description": "2-4 sentences on the week as a whole: what the market is doing, where the board is soft, the single theme."
+    },
+    "markets": {
+      "type": "array",
+      "description": "The by-market-type summary strip. Season CLV split by market reveals where edge actually lives.",
+      "items": {
+        "type": "object",
+        "required": ["type"],
+        "additionalProperties": false,
+        "properties": {
+          "type": { "type": "string", "enum": ["Sides", "Totals", "Props"] },
+          "plays": { "type": "integer", "minimum": 0 },
+          "season_clv": { "type": "number" },
+          "read": { "type": "string", "description": "One line on whether this market is currently offering anything." }
+        }
+      }
+    },
+    "games": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["away", "home", "narrative", "markets"],
+        "additionalProperties": false,
+        "properties": {
+          "kickoff": { "type": "string", "examples": ["Sun 12:00 CT"] },
+          "away": { "type": "string", "minLength": 1 },
+          "home": { "type": "string", "minLength": 1 },
+          "spread": {
+            "type": "number",
+            "description": "From the HOME team's perspective; negative means home is favored."
+          },
+          "total": { "type": "number", "minimum": 0 },
+          "narrative": {
+            "type": "string", "minLength": 1,
+            "description": "2-4 sentences containing: what the market believes, what the process says, the named disagreement, and the risk. If the disagreement cannot be stated, every market in this game must be a pass."
+          },
+          "markets": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "$ref": "#/$defs/marketEntry" }
+          }
+        }
+      }
+    },
+    "passed": {
+      "type": "array",
+      "description": "Games examined and skipped entirely. Publishing declines is what makes selectivity verifiable.",
+      "items": {
+        "type": "object",
+        "required": ["game", "reason"],
+        "additionalProperties": false,
+        "properties": {
+          "game": { "type": "string" },
+          "reason": { "type": "string" }
+        }
+      }
+    },
+    "footer_note": { "type": "string" }
+  },
+  "$defs": {
+    "marketEntry": {
+      "type": "object",
+      "required": ["type", "status"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "type": "string", "enum": ["Side", "Total", "Prop"] },
+        "status": { "type": "string", "enum": ["play", "pass"] },
+        "selection": { "type": "string", "examples": ["Houston +2.5", "Under 41.5"] },
+        "price": { "type": "number", "description": "American odds taken" },
+        "book": { "type": "string", "description": "A price without a source is unverifiable." },
+        "taken_at": { "type": "string" },
+        "fair": { "type": "number", "description": "Your fair price in American odds, after devigging." },
+        "edge_pct": {
+          "type": "number",
+          "description": "Edge in percentage points vs the NO-VIG price. Below 2% against a sharp price should be reported as no edge."
+        },
+        "stake_units": { "type": "number", "minimum": 0, "description": "Fractional Kelly, quarter Kelly default." },
+        "thesis": { "type": "string", "description": "REQUIRED when status is play." },
+        "kill": {
+          "type": "string",
+          "description": "REQUIRED when status is play. What would make this bet wrong, written BEFORE kickoff."
+        },
+        "reason": { "type": "string", "description": "REQUIRED when status is pass. One line." }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "play" } }, "required": ["status"] },
+          "then": { "required": ["selection", "price", "book", "thesis", "kill"] }
+        },
+        {
+          "if": { "properties": { "status": { "const": "pass" } }, "required": ["status"] },
+          "then": { "required": ["reason"] }
+        }
+      ]
+    }
+  }
+}
