@@ -67,6 +67,12 @@ GATE = """<!-- Encrypted payload. AES-256-GCM, PBKDF2-SHA256 x{iters}.
 <title>{brand}</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow">
+<!-- Pages serves this with Cache-Control max-age=600. After a
+     re-encrypt the browser keeps the OLD ciphertext for ten minutes
+     and the new passphrase then fails, which looks exactly like a
+     wrong passphrase. Ask the browser not to store it. -->
+<meta http-equiv="Cache-Control" content="no-store, max-age=0">
+<meta http-equiv="Pragma" content="no-cache">
 <style>
 :root{{--bg:#0B0D10;--panel:#14171C;--ink:#E9ECF1;--ink3:#868F9C;
   --line:#262C35;--accent:#5B9BD8;--neg:#d2666b}}
@@ -105,28 +111,62 @@ button{{font:inherit;font-size:10px;font-weight:600;letter-spacing:.14em;
     <button type="submit">Open</button>
   </form>
   <div class="err" id="e" role="status"></div>
+  <p style="font-size:10px;letter-spacing:.14em;text-transform:uppercase;margin-top:14px">build {build}</p>
 </div>
 <script>
 const SALT="{salt}", NONCE="{nonce}", DATA="{data}", ITER={iters};
 const b64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+
 document.getElementById('f').addEventListener('submit',async ev=>{{
   ev.preventDefault();
   const err=document.getElementById('e');
-  err.textContent='Decrypting\\u2026';
+  /* Trimmed. A pasted passphrase commonly carries a trailing space or
+     newline, which failed silently and looked exactly like a typo. */
+  const pass=document.getElementById('p').value.trim();
+  if(!pass){{ err.textContent='Enter the passphrase.'; return; }}
+  if(!(window.crypto&&crypto.subtle)){{
+    err.textContent='This browser exposes no WebCrypto, so the page cannot be '+
+      'decrypted. Use a current browser over https.';
+    return;
+  }}
+
+  /* STEP 1 - decrypt. ONLY a failure here means a wrong passphrase. The
+     previous version wrapped decryption and rendering in one catch, so any
+     render failure also printed "Wrong passphrase", which was a lie. */
+  let html;
   try{{
-    const enc=new TextEncoder();
+    err.textContent='Decrypting...';
     const base=await crypto.subtle.importKey('raw',
-      enc.encode(document.getElementById('p').value),'PBKDF2',false,
-      ['deriveKey']);
+      new TextEncoder().encode(pass),'PBKDF2',false,['deriveKey']);
     const key=await crypto.subtle.deriveKey(
       {{name:'PBKDF2',salt:b64(SALT),iterations:ITER,hash:'SHA-256'}},
       base,{{name:'AES-GCM',length:256}},false,['decrypt']);
     const plain=await crypto.subtle.decrypt(
       {{name:'AES-GCM',iv:b64(NONCE)}},key,b64(DATA));
-    const html=new TextDecoder().decode(plain);
-    document.open(); document.write(html); document.close();
+    html=new TextDecoder('utf-8').decode(plain);
   }}catch(e){{
-    err.textContent='Wrong passphrase.';
+    err.textContent='Wrong passphrase for build {build}. If you were given a '+
+      'newer one, hard refresh first: Ctrl+Shift+R.';
+    return;
+  }}
+
+  /* STEP 2 - render. Not a passphrase problem, and it no longer claims to be.
+     A Blob URL loads the payload as a real document with its scripts running
+     and the charset pinned; document.write is kept as a fallback because it
+     preserves the original URL. */
+  err.textContent='Opening...';
+  try{{
+    const blob=new Blob([html],{{type:'text/html;charset=utf-8'}});
+    location.replace(URL.createObjectURL(blob));
+  }}catch(e1){{
+    try{{
+      document.open('text/html','replace');
+      document.write(html);
+      document.close();
+    }}catch(e2){{
+      err.textContent='Decrypted correctly, but rendering failed: '+
+        ((e2&&e2.message)||e2);
+    }}
   }}
 }});
 </script>"""
@@ -148,6 +188,7 @@ def main():
     b = base64.b64encode
     doc = GATE.format(
         brand=a.brand, season=a.season, iters=ITERATIONS,
+        build=b(salt).decode()[:8],
         salt=b(salt).decode(), nonce=b(nonce).decode(), data=b(ct).decode())
 
     out = Path(a.out)
@@ -163,6 +204,8 @@ def main():
     log(f"  {a.inp} ({len(src) / 1024:.0f} KB) -> {out} "
         f"({len(doc) / 1024:.0f} KB encrypted)")
     log(f"  AES-256-GCM, PBKDF2-SHA256 x{ITERATIONS:,}")
+    log(f"  build id {b(salt).decode()[:8]} "
+        f"(shown on the gate so a stale cache is obvious)")
     if not a.passphrase:
         log(f"  passphrase written to {a.secret_out} (gitignored)")
     return 0
