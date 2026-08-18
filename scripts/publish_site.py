@@ -20,7 +20,7 @@ repository entirely rather than relying on this gate, because content you do not
 own should not be republished at all, encrypted or otherwise.
 
 Usage:
-    py -3 scripts/publish_site.py -i week01_brief.html -o site/index.html
+    py -3 scripts/publish_site.py -i week01_brief.html -o docs/index.html
 """
 
 from __future__ import annotations
@@ -135,7 +135,7 @@ document.getElementById('f').addEventListener('submit',async ev=>{{
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("-i", "--inp", default="week01_brief.html")
-    ap.add_argument("-o", "--out", default="site/index.html")
+    ap.add_argument("-o", "--out", default="docs/index.html")
     ap.add_argument("--passphrase", help="reuse an existing one")
     ap.add_argument("--brand", default="Strong Side Edge")
     ap.add_argument("--season", type=int, default=2026)

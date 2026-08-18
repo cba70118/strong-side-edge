@@ -5,7 +5,7 @@ team pages and season-long player projections behind them, the season record at
 the back.
 
 **The published site is encrypted.** This repository is public; the output is
-not. `site/index.html` holds an AES-256-GCM payload with a PBKDF2-SHA256 key
+not. `docs/index.html` holds an AES-256-GCM payload with a PBKDF2-SHA256 key
 (310,000 iterations), so the content is unreadable without the passphrase —
 that is real encryption rather than a JavaScript password check, which protects
 nothing on a static host.
@@ -33,7 +33,7 @@ scripts/     ingestion, models, and the report builders
 sql/         schema, marts, audit views
 brain/       priors, hypotheses and graded outcomes (the falsification loop)
 references/  method docs and the dashboard spec
-site/        the encrypted published page
+docs/        the encrypted published page (GitHub Pages root)
 ```
 
 Substrate quirks, verified commands and every trap worth not re-discovering are
@@ -49,7 +49,7 @@ py -3 scripts/slate_data.py --season 2026 --week 1 -o week01_slate.json
 py -3 scripts/season_log.py append -i week01_slate.json
 py -3 scripts/slate_report.py -i week01_slate.json --dash week01_dash.json \
     -o week01_brief.html
-py -3 scripts/publish_site.py -i week01_brief.html -o site/index.html
+py -3 scripts/publish_site.py -i week01_brief.html -o docs/index.html
 ```
 
 Requires `duckdb`, `Pillow`, `cryptography`. Copy `.env.example` to `.env` and
