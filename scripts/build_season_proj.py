@@ -45,22 +45,34 @@ PRIOR = 2025
 # lightly; efficiency is not, so it is shrunk hard toward the league rate.
 SHRINK_TGT = 2.0
 SHRINK_EFF = 40.0
-GAMES_CONST = 14.42        # training-set mean; the availability model lost to it
+# FULL PARTICIPATION, DELIBERATELY. Every games constant is 17. These are
+# projections of production, not forecasts of availability, and the two were
+# being conflated: a population-average absence baked into every line made
+# every healthy 17-game season look like a forecast of decline, when in fact
+# 16 of 36 quarterbacks project UP on a per-game basis.
+#
+# The BANDS were re-measured to match. They used to be actual-total over
+# projected-total, so they carried the spread of missed games as well as of
+# production, and availability was most of that width. They are now per-game
+# actual over per-game projected on the same holdout. Reusing the old widths on
+# a 17-game number would overstate every spread, the rushing one absurdly: a
+# p10 of 0.12 was mostly the chance a back missed half the season.
+GAMES_CONST = 17.0         # full participation: a projection, not an injury forecast
 
 # Empirical actual/projected quantiles, measured on the 409 out-of-sample rows.
-BAND = {"p10": 0.34, "p25": 0.64, "p50": 1.01, "p75": 1.34, "p90": 1.77}
+BAND = {"p10": 0.66, "p25": 0.80, "p50": 0.94, "p75": 1.14, "p90": 1.40}
 
 # RUSHING gets its OWN band, backtested the same way on 237 out-of-sample rows.
 # It beats naive by only 8.1% against receiving's 14.6%, under-projects by 91
 # yards, and its band is far wider - p10 0.12 to p90 2.36. Sharing receiving's
 # band would understate rushing uncertainty by roughly half.
-RUSH_BAND = {"p10": 0.12, "p50": 1.05, "p90": 2.36}
+RUSH_BAND = {"p10": 0.49, "p50": 0.92, "p90": 1.55}
 
 # Backtested the same way, fit 2021-22 and scored 2023-25. Each band is its
 # own; sharing one would understate QB yardage and halve receiver TD spread.
-REC_TD_BAND = {"p10": 0.30, "p50": 0.93, "p90": 2.22}   # +13.2% over naive
-PASS_YD_BAND = {"p10": 0.57, "p50": 1.01, "p90": 1.31}  # +13.8%
-PASS_TD_BAND = {"p10": 0.50, "p50": 1.01, "p90": 1.51}  # +17.2% at k=300
+REC_TD_BAND = {"p10": 0.32, "p50": 0.92, "p90": 2.12}   # +13.2% over naive
+PASS_YD_BAND = {"p10": 0.82, "p50": 0.96, "p90": 1.12}  # +13.8%
+PASS_TD_BAND = {"p10": 0.72, "p50": 0.95, "p90": 1.36}  # +17.2% at k=300
 # Passing TDs want far heavier shrinkage than passing yards. k=40 was tuned on
 # receiver targets, where it is 21% of a typical denominator; against a
 # quarterback's ~600 attempts it applies only 6%, so a 46-TD season carried
@@ -68,9 +80,9 @@ PASS_TD_BAND = {"p10": 0.50, "p50": 1.01, "p90": 1.51}  # +17.2% at k=300
 # worth +3.5% holdout MAE. Yards were tested the same way and REFUSED the
 # retune, so they keep k=40.
 SHRINK_PASS_TD = 300.0
-QB_GAMES_CONST = 14.31
-REC_GAMES_CONST = 14.76
-RUSH_GAMES_CONST = 12.54
+QB_GAMES_CONST = 17.0
+REC_GAMES_CONST = 17.0
+RUSH_GAMES_CONST = 17.0
 SHRINK_CARRY = 2.0
 LOW_GAMES = 11             # prior-season games at or below which availability
                            # is flagged rather than modelled

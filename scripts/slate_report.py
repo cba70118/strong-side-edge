@@ -143,7 +143,9 @@ tr.grp td{font-size:10px;letter-spacing:.16em;text-transform:uppercase;
 .v-noedge{color:var(--ink3)} .v-withinnoise{color:var(--warn)}
 .v-candidate{color:var(--pos)} .v-wrongsign{color:var(--neg)}
 .dim{color:var(--ink3)}
-.gm{color:var(--ink3)} .rate{color:var(--ink2)}
+.rate{color:var(--ink2)}
+.method{margin-top:26px;padding-top:16px;border-top:2px solid var(--rule)}
+.method .lede{max-width:82ch}
 .ct{margin-left:7px;font-weight:400;letter-spacing:0;opacity:.7}
 /* LAST SEASON vs PROJECTION. The two column groups get their own spanning
    header and different weights - the panel previously gave the reader no way
@@ -1253,7 +1255,6 @@ def panel_player_season(con, season):
             f'<td class="n was cpass" data-v="{prpy or 0}">{c(prpy)}</td>'
             f'<td class="n was cpass" data-v="{prptd or 0}">{c(prptd)}</td>'
             f'<td class="n was cpass" data-v="{prints or 0}">{c(prints)}</td>'
-            f'<td class="n gm cpass" data-v="{pgm or 0}">{c(pgm, 1)}</td>'
             f'<td class="n proj strong cpass" data-v="{ppy or 0}">{c(ppy)}</td>'
             f'<td class="n proj rate cpass" data-v="{per(ppy, pgm)}">'
             f'{c(per(ppy, pgm), 1)}</td>'
@@ -1267,7 +1268,6 @@ def panel_player_season(con, season):
             f'<td class="n was crec" data-v="{pry or 0}">{c(pry)}</td>'
             f'<td class="n was crec" data-v="{prrtd or 0}">{c(prrtd)}</td>'
             f'<td class="n proj crec" data-v="{ptg or 0}">{c(ptg, 1)}</td>'
-            f'<td class="n gm crec" data-v="{pgm or 0}">{c(pgm, 1)}</td>'
             f'<td class="n proj strong crec" data-v="{pry2 or 0}">{c(pry2)}</td>'
             f'<td class="n proj rate crec" data-v="{per(pry2, pgm)}">'
             f'{c(per(pry2, pgm), 1)}</td>'
@@ -1280,7 +1280,6 @@ def panel_player_season(con, season):
             f'<td class="n was crush" data-v="{prc or 0}">{c(prc)}</td>'
             f'<td class="n was crush" data-v="{prry or 0}">{c(prry)}</td>'
             f'<td class="n proj crush" data-v="{pc or 0}">{c(pc, 1)}</td>'
-            f'<td class="n gm crush" data-v="{rgm or 0}">{c(rgm, 1)}</td>'
             f'<td class="n proj strong crush" data-v="{prush or 0}">{c(prush)}</td>'
             f'<td class="n proj rate crush" data-v="{per(prush, rgm)}">'
             f'{c(per(prush, rgm), 1)}</td>'
@@ -1298,22 +1297,46 @@ def panel_player_season(con, season):
             btns += (f'<button data-pos="{pos}" aria-pressed="false">{pos}'
                      f'<span class="ct">{counts[pos]}</span></button>')
     n_flag = sum(1 for r in rows if r[30])
-    qb_gm = next((r[31] for r in rows if r[2] == "QB" and r[31]), 14.31)
+    n_gm = next((r[31] for r in rows if r[2] == "QB" and r[31]), 17.0)
 
-    return f'''<p class="lede"><b>These are totals over {qb_gm:.1f} games, not
-over 17.</b> That is the single biggest reason a projection sits below the same
-player&rsquo;s 2025 line. Quarterbacks who threw 200 or more attempts went on to
-play a mean of <b>12.8</b> games the following season, and only <b>25.4%</b>
-played all 17. A projection built on a full season would be biased high on
-everyone, so the totals carry the availability discount and the <b>gm</b> column
-states it. The <b>yd/gm</b> column is the like-for-like number: multiply it by
-whatever games count you believe in.</p>
-<p class="lede" style="margin-top:11px">A per-player games forecast was tested
-and <b>rejected</b>. Games played carries year over year at only <b>+0.097</b>,
-and using last season&rsquo;s games directly was <b>14.5% worse</b> on holdout
-error than the flat constant. Availability is close to unforecastable at this
-grain, so it is applied as a population rate, not a personal one. {n_flag}
-players who played 11 games or fewer are flagged rather than modeled.</p>
+    return f'''<div class="posfilter" role="group" aria-label="Filter by position">{btns}</div>
+<div class="tw"><table class="pseason"><thead>
+ <tr class="grp">
+  <th colspan="5" class="gwas">2025 actual</th>
+  <th colspan="4" class="gwas cpass">passing</th>
+  <th colspan="5" class="gproj cpass">2026 passing</th>
+  <th colspan="3" class="gwas crec">receiving</th>
+  <th colspan="6" class="gproj crec">2026 receiving</th>
+  <th colspan="2" class="gwas crush">rushing</th>
+  <th colspan="4" class="gproj crush">2026 rushing</th>
+ </tr>
+ <tr>
+  <th class="s n">#</th><th class="s">player</th><th class="s">tm</th>
+  <th class="s">pos</th><th class="s n was">gm</th>
+  <th class="s n was cpass">att</th><th class="s n was cpass">yds</th>
+  <th class="s n was cpass">TD</th><th class="s n was cpass">INT</th>
+  <th class="s n cpass">yards</th>
+  <th class="s n cpass">yd/gm</th><th class="s n cpass">band</th>
+  <th class="s n cpass">TDs</th><th class="s n cpass">band</th>
+  <th class="s n was crec">tgt</th><th class="s n was crec">yds</th>
+  <th class="s n was crec">TD</th>
+  <th class="s n crec">tgt</th><th class="s n crec">yards</th><th class="s n crec">yd/gm</th>
+  <th class="s n crec">band</th><th class="s n crec">TDs</th>
+  <th class="s n crec">band</th>
+  <th class="s n was crush">car</th><th class="s n was crush">yds</th>
+  <th class="s n crush">car</th><th class="s n crush">yards</th><th class="s n crush">yd/gm</th>
+  <th class="s n crush">band</th>
+ </tr>
+</thead><tbody>{body}</tbody></table></div>
+<div class="method">
+<h4 class="nh">How these are built</h4>
+<p class="lede"><b>A full 17-game season, on purpose.</b> These project
+production, not availability. An earlier version discounted every line to the
+{n_gm:.0f} games this population actually averages, which made every healthy
+season look like a forecast of decline. It was not one: on a per-game basis
+<b>16 of 36</b> quarterbacks project up, and the ones that do are exactly the
+weak 2025 seasons. Pool-wide the change is <b>&minus;1.6%</b> per game, which is
+shrinkage toward the league, not pessimism.</p>
 <p class="lede" style="margin-top:11px"><b>Projections, not edges.</b> Each stat
 was backtested the same way, fit on 2021&ndash;22 and scored on 2023&ndash;25,
 against simply reusing last season&rsquo;s total. QB passing yards beat that by
@@ -1321,50 +1344,25 @@ against simply reusing last season&rsquo;s total. QB passing yards beat that by
 receiving yards by <b>9.6%</b>. None of it is tested against a market: no
 season-long player line exists in either feed, and there is no ADP source
 here.</p>
-<p class="lede" style="margin-top:11px"><b>Every band is its own.</b> p10 and
-p90 are that stat&rsquo;s measured out-of-sample spread, and they differ far too
-much to share: QB passing yards 0.57&ndash;1.31&times;, QB passing TDs
-0.50&ndash;1.51&times;, receiving yards 0.64&ndash;1.52&times;, and receiving
-TDs <b>0.30&ndash;2.22&times;</b>. A 3-TD projection honestly spans 1 to 7,
-because TD-per-target carries year over year at only +0.221. A quarterback&rsquo;s TD rate is
-shrunk far harder than his yards: <b>k=300</b> against roughly 600 attempts
-rather than the 40 used for yardage, chosen on the fit period alone and worth
-+3.5% out of sample. Without it a 46-TD season carried through nearly
-untouched. Interceptions show last season&rsquo;s count and
-are never projected, since INT rate carries at +0.055. QB passing yards is a
-<b>level, not a ranking</b>: it wins on error by shrinking outliers, and
-correlates with the actual at only +0.221.</p>
-<div class="posfilter" role="group" aria-label="Filter by position">{btns}</div>
-<div class="tw"><table class="pseason"><thead>
- <tr class="grp">
-  <th colspan="5" class="gwas">2025 actual</th>
-  <th colspan="4" class="gwas cpass">passing</th>
-  <th colspan="6" class="gproj cpass">2026 passing</th>
-  <th colspan="3" class="gwas crec">receiving</th>
-  <th colspan="7" class="gproj crec">2026 receiving</th>
-  <th colspan="2" class="gwas crush">rushing</th>
-  <th colspan="5" class="gproj crush">2026 rushing</th>
- </tr>
- <tr>
-  <th class="s n">#</th><th class="s">player</th><th class="s">tm</th>
-  <th class="s">pos</th><th class="s n was">gm</th>
-  <th class="s n was cpass">att</th><th class="s n was cpass">yds</th>
-  <th class="s n was cpass">TD</th><th class="s n was cpass">INT</th>
-  <th class="s n cpass">gm</th><th class="s n cpass">yards</th>
-  <th class="s n cpass">yd/gm</th><th class="s n cpass">band</th>
-  <th class="s n cpass">TDs</th><th class="s n cpass">band</th>
-  <th class="s n was crec">tgt</th><th class="s n was crec">yds</th>
-  <th class="s n was crec">TD</th>
-  <th class="s n crec">tgt</th><th class="s n crec">gm</th>
-  <th class="s n crec">yards</th><th class="s n crec">yd/gm</th>
-  <th class="s n crec">band</th><th class="s n crec">TDs</th>
-  <th class="s n crec">band</th>
-  <th class="s n was crush">car</th><th class="s n was crush">yds</th>
-  <th class="s n crush">car</th><th class="s n crush">gm</th>
-  <th class="s n crush">yards</th><th class="s n crush">yd/gm</th>
-  <th class="s n crush">band</th>
- </tr>
-</thead><tbody>{body}</tbody></table></div>'''
+<p class="lede" style="margin-top:11px"><b>Every band is its own, and all of
+them were re-measured</b> when the projection moved to a full season. They used
+to be ratios of actual season total to projected total, so they carried the
+spread of missed games as much as of production. Now they compare per-game to
+per-game, which removes availability from both sides: QB passing yards
+0.82&ndash;1.12&times;, QB passing TDs 0.72&ndash;1.36&times;, receiving yards
+0.66&ndash;1.40&times;, rushing yards 0.49&ndash;1.55&times;, and receiving TDs
+<b>0.32&ndash;2.12&times;</b>, still by far the widest because TD-per-target
+carries year over year at only +0.221.</p>
+<p class="lede" style="margin-top:11px">A quarterback&rsquo;s TD rate is shrunk
+far harder than his yards: <b>k=300</b> against roughly 600 attempts rather than
+the 40 used for yardage, chosen on the fit period alone and worth +3.5% out of
+sample. Without it a 46-TD season carried through nearly untouched.
+Interceptions show last season&rsquo;s count and are never projected, since INT
+rate carries at +0.055. QB passing yards is a <b>level, not a ranking</b>: it
+wins on error by shrinking outliers, and correlates with the actual at only
++0.221. {n_flag} players who played 11 games or fewer are flagged, not
+modeled.</p>
+</div>'''
 
 
 PRIOR_SEASON_LABEL = "2025"
@@ -1442,15 +1440,17 @@ source; only the headline and one line of description are stored.</p>
 <ol class="log news">{nrows}</ol>'''
 
 
-LEDE_METRICS_1 = """<p class="lede"><b>Stability is not edge, and the
+H_METRICS_1 = '<h4 class="nh">1. Does it describe the team?</h4>'
+H_METRICS_2 = '<h4 class="nh">2. Does it beat the price?</h4>'
+
+LEDE_METRICS_1 = """<div class="method"><p class="lede"><b>Stability is not edge, and the
 difference is the whole point.</b> A stable metric is one the market has had
 every chance to price. Points per game is among the most stable numbers on this
 page and knows <b>nothing</b> the closing line does not. So the two tables below
 are separate on purpose: the first asks whether a number is measuring the team
 or the schedule, the second asks whether it beats a price.</p>
 
-<h4 class="nh">1. Does it describe the team?</h4>
-<p class="lede" style="margin-top:8px">Each cell is the correlation between a
+<p class="lede" style="margin-top:11px">Each cell is the correlation between a
 team&rsquo;s first N games and the <b>rest of that same season</b>, over
 2020&ndash;2025. Not split-half reliability, which asks an easier question, but
 the one you actually face in week 5, including the part where early opponents
@@ -1471,8 +1471,7 @@ as claimed: PROE settles fast, every defensive metric is weak at every N,
 turnover margin decays toward zero, and red zone TD rate is close to noise.
 Offensive EPA is <b>better</b> than claimed, already usable at N=4.</p>
 
-<h4 class="nh">2. Does it beat the price?</h4>
-<p class="lede" style="margin-top:8px">Every metric built point-in-time from
+<p class="lede" style="margin-top:11px">Every metric built point-in-time from
 prior games only, differenced home minus away, then correlated with the margin
 <b>holding the closing spread fixed</b>. The raw column is there to show why raw
 correlation is worthless: everything correlates with margin, and so does the
@@ -1492,7 +1491,7 @@ simulator at &minus;0.030.</p>
 numbers explain a line, size a result against expectation, and flag when a
 win came from something that will not repeat. Pressure rate is now stored per
 team-game and is new here. None of it enters a price on a side, because none of
-it earned that.</p>
+it earned that.</p></div>
 """
 
 
@@ -1552,14 +1551,14 @@ def panel_metrics(con):
         f'<td><span class="vd v-{v.lower().replace(" ", "")}">{e(v)}</span></td>'
         f'</tr>' for m, g, raw, pc, se, ts, v in edge)
 
-    return LEDE_METRICS_1 + (
+    return H_METRICS_1 + (
         '<div class="tw"><table><thead><tr>'
         '<th class="s">metric</th><th class="s">claimed</th>'
         '<th class="s n">N=4</th><th class="s n">N=6</th>'
         '<th class="s n">N=8</th><th class="s n">N=10</th>'
         '<th class="s">verdict</th>'
         '</tr></thead><tbody>' + srows + '</tbody></table></div>'
-    ) + LEDE_METRICS_2 + (
+    ) + LEDE_METRICS_1 + LEDE_METRICS_2 + H_METRICS_2 + (
         '<div class="tw"><table><thead><tr>'
         '<th class="s">metric</th><th class="s n">games</th>'
         '<th class="s n">raw</th><th class="s n">partial</th>'

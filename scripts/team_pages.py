@@ -70,14 +70,29 @@ PTS_PER_RATING = 39.18
 # `direction` is 'high', 'low', or 'style'. A style metric has no better end -
 # a pass-leaning offense is not a good one - so it gets a value and no
 # percentile bar. A bar would assert a direction that does not exist.
+# label, column, weight column, direction, source table, stability key.
+# The stability figure is NOT hard-coded any more: it is looked up from
+# mart.metric_stability so the number beside a metric is the one currently
+# measured. Hard-coding it meant the page kept quoting an old run.
 METRICS = [
-    ("off EPA/play", "off_epa_play_neutral", "off_plays_neutral", "high", 0.366),
-    ("off success rate", "off_success", "off_plays", "high", 0.404),
-    ("explosive rate", "off_explosive_rate", "off_plays", "high", 0.281),
-    ("def EPA/play", "def_epa_play_neutral", "def_plays_neutral", "low", 0.206),
-    ("def success rate", "def_success", "def_plays", "low", 0.275),
-    ("pass rate over exp", "off_proe_neutral", "off_plays_neutral", "style", 0.459),
-    ("sec per play", "off_sec_per_play_neutral", "off_plays_neutral", "style", 0.397),
+    ("off EPA/play", "off_epa_play_neutral", "off_plays_neutral", "high",
+     "g", "off EPA/play"),
+    ("off success rate", "off_success", "off_plays", "high",
+     "g", "off success rate"),
+    ("explosive rate", "off_explosive_rate", "off_plays", "high",
+     "g", "off explosive rate"),
+    ("pressure allowed", "pressure_rate_allowed", "dropbacks", "low",
+     "p", "pressure allowed"),
+    ("def EPA/play", "def_epa_play_neutral", "def_plays_neutral", "low",
+     "g", "def EPA/play"),
+    ("def success rate", "def_success", "def_plays", "low",
+     "g", "def success rate"),
+    ("pressure generated", "pressure_rate_made", "pass_snaps_faced", "high",
+     "p", "pressure generated"),
+    ("pass rate over exp", "off_proe_neutral", "off_plays_neutral", "style",
+     "g", "PROE"),
+    ("sec per play", "off_sec_per_play_neutral", "off_plays_neutral", "style",
+     "g", "pace sec/play"),
 ]
 
 
@@ -320,13 +335,24 @@ def fetch(con):
     # an unweighted mean of per-game rates lets a two-snap game count as much
     # as a fifty-snap one, which is the error that put a 3-14 team at +0.170.
     d["metrics"] = {}
-    for label, col, wcol, _dir, _r in METRICS:
-        d["metrics"][label] = dict(con.execute(f"""
-            SELECT team, sum({col} * {wcol}) / nullif(sum({wcol}), 0)
-            FROM mart.team_game
-            WHERE season = ? AND game_type = 'REG' AND {col} IS NOT NULL
-            GROUP BY 1
-        """, [HIST]).fetchall())
+    d["stab"] = {}
+    try:
+        d["stab"] = dict(con.execute(
+            "SELECT metric, n8 FROM mart.metric_stability").fetchall())
+    except Exception:
+        pass
+    for label, col, wcol, _dir, src, _sk in METRICS:
+        tbl = ("mart.team_game" if src == "g" else "mart.team_pressure")
+        gate = ("AND game_type = 'REG'" if src == "g" else "AND native = 1")
+        try:
+            d["metrics"][label] = dict(con.execute(f"""
+                SELECT team, sum({col} * {wcol}) / nullif(sum({wcol}), 0)
+                FROM {tbl}
+                WHERE season = ? {gate} AND {col} IS NOT NULL
+                GROUP BY 1
+            """, [HIST]).fetchall())
+        except Exception:
+            d["metrics"][label] = {}
     return d
 
 
@@ -417,29 +443,31 @@ def sched_strip(rows, teams, ranks, pts_fn):
     for wk in range(1, last + 1):
         r = by_week.get(wk)
         if r is None:
-            # The gap in the sequence IS the bye. Drawing it keeps week
-            # numbers aligned with their position in the strip.
-            cells += (f'<div class="wkc bye"><div class="wkn">{wk}</div>'
-                      f'<div class="bar"></div><div class="opp">BYE</div>'
-                      f'<div class="val">&nbsp;</div></div>')
+            # The gap in the sequence IS the bye. Drawing it keeps the week
+            # numbers lined up with their place in the season.
+            cells += (f'<div class="wkr bye"><div class="wkn">{wk}</div>'
+                      f'<div class="opp">bye</div><div class="bar"></div>'
+                      f'<div class="val"></div></div>')
             continue
         o = teams.get(r["opp"], {}) or {}
         raw = o.get("blended")
         v = raw or 0.0
-        h = round(min(abs(v) / peak, 1.0) * 100)
+        # Half the track sits on each side of the centre rule, so a full-scale
+        # bar is 50% wide. Sizing it at 100% is exactly what sent the old
+        # vertical bars over the labels.
+        w = round(min(abs(v) / peak, 1.0) * 50, 1)
         up = v >= 0
         rk = ranks["net"].get(r["opp"]) or "--"
         home = r["at"] == "vs"
         cells += (
-            f'<div class="wkc{"" if raw is not None else " nod"}" '
-            f'title="Week {wk}: {"vs" if home else "at"} {r["opp"]} '
-            f'(rank {rk}), strength {pts_fn(raw)}">'
+            f'<div class="wkr" title="Week {wk}: {"vs" if home else "at"} '
+            f'{r["opp"]} (rank {rk}), strength {pts_fn(raw)}">'
             f'<div class="wkn">{wk}</div>'
-            f'<div class="bar"><i class="{"up" if up else "dn"}" '
-            f'style="height:{h}%"></i></div>'
-            f'<div class="opp">{"" if home else "@"}'
+            f'<div class="opp"><span class="ha">{"" if home else "@"}</span>'
             f'<span class="lg lg-{r["opp"]}"></span>'
             f'<b>{r["opp"]}</b></div>'
+            f'<div class="bar"><i class="{"up" if up else "dn"}" '
+            f'style="width:{w}%"></i></div>'
             f'<div class="val">{pts_fn(raw)}</div></div>')
 
     played = [r for r in rows if (teams.get(r["opp"], {}) or {}).get("blended")
@@ -480,7 +508,8 @@ def metric_rows(t, d):
     league'. Style metrics get None, which renders no bar at all.
     """
     out = []
-    for label, _col, _w, direction, r in METRICS:
+    for label, _col, _w, direction, _src, skey in METRICS:
+        r = d["stab"].get(skey)
         vals = d["metrics"].get(label, {})
         v = vals.get(t)
         if v is None:
@@ -494,7 +523,7 @@ def metric_rows(t, d):
                         if (x < v if direction == "high" else x > v))
             pct = worse / (n - 1) if n > 1 else 0.5
             rank = sorted(others, reverse=(direction == "high")).index(v) + 1
-        dp = 1 if "sec" in label else 3
+        dp = 1 if "sec" in label else (3 if "EPA" in label else 3)
         out.append((label, v, pct, rank, dp, r))
     return out
 
@@ -792,36 +821,39 @@ LEDGER_CSS = """
 .ledger .crow .cr{text-align:right;color:var(--ink3);font-size:10px;
   font-variant-numeric:tabular-nums}
 
-/* Season strength strip. Grid, not a table: there is no header row to drift
-   out of alignment, and grid tracks cannot desynchronize the way table columns
-   did across 32 pages. */
-.ledger .strip{display:grid;
-  grid-template-columns:repeat(auto-fill,minmax(58px,1fr));
-  gap:1px;background:var(--line);border:1px solid var(--line);margin:10px 16px 0}
-.ledger .wkc{background:var(--panel);padding:7px 2px 6px;text-align:center;
-  display:flex;flex-direction:column;align-items:center;gap:3px}
-.ledger .wkc .wkn{font-size:9px;letter-spacing:.12em;color:var(--ink3)}
-.ledger .wkc .bar{height:38px;width:100%;display:flex;flex-direction:column;
-  justify-content:center;align-items:center;position:relative}
-.ledger .wkc .bar::before{content:"";position:absolute;left:12%;right:12%;
-  top:50%;height:1px;background:var(--line)}
-.ledger .wkc .bar i{width:11px;display:block;position:absolute}
-.ledger .wkc .bar i.up{bottom:50%;background:var(--warn)}
-.ledger .wkc .bar i.dn{top:50%;background:var(--play)}
-.ledger .wkc .opp{display:flex;align-items:center;justify-content:center;
-  gap:3px;font-size:11px;font-weight:700;line-height:1}
-.ledger .wkc .opp .lg{width:13px;height:13px;flex:0 0 13px}
-.ledger .wkc .val{font-size:9.5px;color:var(--ink3);
+/* Season strength strip, PORTRAIT. One week per row, bar diverging from a
+   centre rule. The landscape version sized bars as a percentage of the box but
+   drew them from the midpoint, so anything past half ran over the labels.
+   Here each side owns half the track and a full-scale bar is 50% wide. */
+.ledger .strip{margin:10px 16px 0;border:1px solid var(--line);
+  background:var(--panel)}
+.ledger .wkr{display:grid;grid-template-columns:22px 76px minmax(0,1fr) 46px;
+  align-items:center;gap:8px;padding:3px 9px;
+  border-bottom:1px solid var(--line)}
+.ledger .wkr:last-child{border-bottom:0}
+.ledger .wkr .wkn{font-size:9.5px;color:var(--ink3);text-align:right;
   font-variant-numeric:tabular-nums}
-.ledger .wkc.bye{opacity:.45}
-.ledger .wkc.bye .opp{font-size:9px;letter-spacing:.1em;color:var(--ink3)}
+.ledger .wkr .opp{display:flex;align-items:center;gap:4px;font-size:11.5px;
+  font-weight:700;line-height:1;overflow:hidden}
+.ledger .wkr .opp .ha{color:var(--ink3);font-weight:400;width:7px;flex:0 0 7px}
+.ledger .wkr .opp .lg{width:14px;height:14px;flex:0 0 14px}
+.ledger .wkr .bar{position:relative;height:11px;background:var(--row)}
+.ledger .wkr .bar::before{content:"";position:absolute;left:50%;top:-1px;
+  bottom:-1px;width:1px;background:var(--ink3);opacity:.5}
+.ledger .wkr .bar i{position:absolute;top:0;bottom:0;display:block}
+.ledger .wkr .bar i.up{left:50%;background:var(--warn)}
+.ledger .wkr .bar i.dn{right:50%;background:var(--play)}
+.ledger .wkr .val{text-align:right;font-size:10.5px;color:var(--ink3);
+  font-variant-numeric:tabular-nums}
+.ledger .wkr.bye{opacity:.45}
+.ledger .wkr.bye .opp{font-size:9.5px;letter-spacing:.12em;font-weight:400;
+  text-transform:uppercase;color:var(--ink3)}
 .ledger .sfoot{display:flex;flex-wrap:wrap;gap:16px;padding:8px 16px 0;
   font-size:11px;color:var(--ink3)}
 .ledger .sfoot .lgd{display:flex;align-items:center;gap:5px}
 .ledger .sfoot .lgd i{width:9px;height:9px;display:inline-block}
 .ledger .sfoot .lgd i.up{background:var(--warn)}
 .ledger .sfoot .lgd i.dn{background:var(--play);margin-left:7px}
-.ledger .tw{overflow-x:auto}
 .ledger .sec{padding:16px 16px 0;color:var(--ink);font-weight:600}
 
 .ledger ol.log{list-style:none;margin:0;padding:10px 16px 18px}
