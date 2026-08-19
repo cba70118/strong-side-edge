@@ -204,15 +204,72 @@ def fetch(con):
             if wk == 1:
                 d["games"][me] = row
 
+    # Charting tendencies, ranked WITHIN the season. Levels are not comparable
+    # across seasons (the league man rate swings 29->49->31 on identical
+    # charted volume), but a rank inside one season is sound.
+    d["chart"] = {}
+    try:
+        rows = con.execute("""
+            WITH s AS (
+                SELECT team,
+                       avg(play_action_rate) AS pa, avg(screen_rate) AS scr,
+                       avg(rpo_rate) AS rpo, avg(motion_rate) AS mot,
+                       avg(no_huddle_rate) AS nh, avg(shotgun_rate) AS sg,
+                       avg(blitz_sent) AS blz, avg(man_rate) AS man,
+                       sum(plays) AS n
+                FROM mart.team_charting
+                WHERE season = (SELECT max(season) FROM mart.team_charting)
+                GROUP BY team
+            )
+            SELECT team, pa, scr, rpo, mot, nh, sg, blz, man, n,
+                   rank() OVER (ORDER BY pa DESC)  AS r_pa,
+                   rank() OVER (ORDER BY scr DESC) AS r_scr,
+                   rank() OVER (ORDER BY rpo DESC) AS r_rpo,
+                   rank() OVER (ORDER BY mot DESC) AS r_mot,
+                   rank() OVER (ORDER BY nh DESC)  AS r_nh,
+                   rank() OVER (ORDER BY sg DESC)  AS r_sg,
+                   rank() OVER (ORDER BY blz DESC) AS r_blz,
+                   rank() OVER (ORDER BY man DESC) AS r_man
+            FROM s
+        """).fetchall()
+        keys = ["team", "pa", "scr", "rpo", "mot", "nh", "sg", "blz", "man",
+                "n", "r_pa", "r_scr", "r_rpo", "r_mot", "r_nh", "r_sg",
+                "r_blz", "r_man"]
+        for r in rows:
+            d["chart"][r[0]] = dict(zip(keys, r))
+        d["chart_season"] = con.execute(
+            "SELECT max(season) FROM mart.team_charting").fetchone()[0]
+    except Exception:
+        d["chart_season"] = None
+
     d["players"] = {}
+    # Charting is joined on gsis_id from the most recent charted season. It is
+    # last season's usage sitting beside a projection, so the header says so.
     for r in con.execute("""
-        SELECT team, display_name, position, proj_targets, proj_rec_yards,
-               proj_carries, proj_rush_yards
-        FROM mart.player_projection_pre WHERE display_name IS NOT NULL
-        ORDER BY coalesce(proj_targets,0) + coalesce(proj_carries,0) DESC
+        WITH ch AS (
+            SELECT gsis_id,
+                   sum(targets)                                  AS n,
+                   sum(catchable_rate * targets)
+                     / nullif(sum(targets), 0)                   AS catchable,
+                   sum(tgt_vs_man)                               AS man,
+                   sum(tgt_vs_zone)                              AS zone
+            FROM mart.player_charting
+            WHERE season = (SELECT max(season) FROM mart.player_charting)
+            GROUP BY gsis_id
+        )
+        SELECT p.team, p.display_name, p.position, p.proj_targets,
+               p.proj_rec_yards, p.proj_carries, p.proj_rush_yards,
+               ch.catchable,
+               ch.man / nullif(ch.man + ch.zone, 0) AS man_share,
+               ch.man + ch.zone                     AS charted
+        FROM mart.player_projection_pre p
+        LEFT JOIN ch ON ch.gsis_id = p.gsis_id
+        WHERE p.display_name IS NOT NULL
+        ORDER BY coalesce(p.proj_targets,0) + coalesce(p.proj_carries,0) DESC
     """).fetchall():
         d["players"].setdefault(r[0], []).append(dict(zip(
-            ["team", "name", "pos", "tgt", "rec_yds", "car", "rush_yds"], r)))
+            ["team", "name", "pos", "tgt", "rec_yds", "car", "rush_yds",
+             "catchable", "man_share", "charted"], r)))
 
     # INJURY REPORT AS CONTEXT, NEVER AS A SIGNAL. h-0010 measured the
     # Out-count differential at partial +0.0425 against the closing spread on
@@ -277,6 +334,125 @@ def num(v, dp=2, sign=False):
     if v is None:
         return '<span class="na">--</span>'
     return (f"{{:+.{dp}f}}" if sign else f"{{:.{dp}f}}").format(v)
+
+
+def pctc(v):
+    """A charted rate, or a dash. Never a zero standing in for absent."""
+    return f"{v * 100:.0f}%" if v else '<span class="na">--</span>'
+
+
+def mz(share, n):
+    """Man-coverage target share, suppressed under a usable sample.
+
+    Under 20 charted targets the split is a handful of plays and would read as
+    a tendency when it is a coin flip.
+    """
+    if share is None or not n or n < 20:
+        return '<span class="na">--</span>'
+    return f"{share * 100:.0f}%"
+
+
+
+CHART_ROWS = [
+    ("pa",  "r_pa",  "play action",   "share of dropbacks with play action"),
+    ("sg",  "r_sg",  "shotgun",       "share of dropbacks from shotgun"),
+    ("mot", "r_mot", "motion",        "share of plays with pre-snap motion"),
+    ("rpo", "r_rpo", "RPO",           "run-pass option share of plays"),
+    ("scr", "r_scr", "screens",       "share of dropbacks that are screens"),
+    ("nh",  "r_nh",  "no huddle",     "share of plays run without a huddle"),
+    ("blz", "r_blz", "blitzers sent", "average extra rushers this defense sends"),
+    ("man", "r_man", "man coverage",  "share of charted dropbacks in man"),
+]
+
+
+def charting_block(c, season):
+    """Coordinator tendencies as within-season ranks.
+
+    A rank rather than a level because the league man rate swings twenty points
+    between seasons on identical charted volume, which is a charting revision
+    rather than a change in football. Ranks inside one season are sound.
+    """
+    if not c:
+        return '<p class="empty">No charting data for this club.</p>'
+    out = ""
+    for key, rkey, label, why in CHART_ROWS:
+        v, rk = c.get(key), c.get(rkey)
+        if v is None or rk is None:
+            continue
+        # rank 1 is the most of a thing; the bar fills from the league bottom
+        pct = round((33 - rk) / 32 * 100)
+        val = f"{v:.2f}" if key == "blz" else f"{v * 100:.0f}%"
+        out += (f'<div class="crow" title="{e(why)}">'
+                f'<div class="cl">{e(label)}</div>'
+                f'<div class="cb"><i style="width:{pct}%"></i></div>'
+                f'<div class="cv">{val}</div>'
+                f'<div class="cr">{rk}</div></div>')
+    return (f'<div class="chart-note">Coordinator tendencies, {season}. '
+            f'Bar is rank among 32, not a level. These are the most stable '
+            f'numbers on the page (no huddle 0.91, motion 0.87 season to '
+            f'season, against 0.55 for offensive EPA) because they carry '
+            f'intent, not performance. They say what a team likes to do, not '
+            f'how good it is.</div><div class="ctable">{out}</div>')
+
+
+
+def sched_strip(rows, teams, ranks, pts_fn):
+    """The season as a strength profile, one cell per week.
+
+    rows are this team's games; teams carries every club's rating so the
+    opponent can be valued; ranks gives the opponent's power-ranking place.
+    Bars are scaled to the strongest opponent anyone faces, so a cell means the
+    same thing on all 32 pages.
+    """
+    if not rows:
+        return '<p class="empty">No schedule loaded.</p>'
+
+    vals = [abs((teams.get(r["opp"], {}) or {}).get("blended") or 0.0)
+            for r in rows]
+    peak = max(vals) or 1.0
+    by_week = {r["week"]: r for r in rows}
+    last = max(by_week) if by_week else 18
+
+    cells = ""
+    for wk in range(1, last + 1):
+        r = by_week.get(wk)
+        if r is None:
+            # The gap in the sequence IS the bye. Drawing it keeps week
+            # numbers aligned with their position in the strip.
+            cells += (f'<div class="wkc bye"><div class="wkn">{wk}</div>'
+                      f'<div class="bar"></div><div class="opp">BYE</div>'
+                      f'<div class="val">&nbsp;</div></div>')
+            continue
+        o = teams.get(r["opp"], {}) or {}
+        raw = o.get("blended")
+        v = raw or 0.0
+        h = round(min(abs(v) / peak, 1.0) * 100)
+        up = v >= 0
+        rk = ranks["net"].get(r["opp"]) or "--"
+        home = r["at"] == "vs"
+        cells += (
+            f'<div class="wkc{"" if raw is not None else " nod"}" '
+            f'title="Week {wk}: {"vs" if home else "at"} {r["opp"]} '
+            f'(rank {rk}), strength {pts_fn(raw)}">'
+            f'<div class="wkn">{wk}</div>'
+            f'<div class="bar"><i class="{"up" if up else "dn"}" '
+            f'style="height:{h}%"></i></div>'
+            f'<div class="opp">{"" if home else "@"}'
+            f'<span class="lg lg-{r["opp"]}"></span>'
+            f'<b>{r["opp"]}</b></div>'
+            f'<div class="val">{pts_fn(raw)}</div></div>')
+
+    played = [r for r in rows if (teams.get(r["opp"], {}) or {}).get("blended")
+              is not None]
+    avg = (sum((teams[r["opp"]]["blended"]) for r in played) / len(played)
+           if played else None)
+    hard = sum(1 for r in played if (teams[r["opp"]]["blended"] or 0) > 0)
+    foot = (f'<div class="sfoot"><span><b>{pts_fn(avg)}</b> average opponent'
+            f'</span><span><b>{hard}</b> of {len(played)} above average</span>'
+            f'<span class="lgd"><i class="up"></i>tougher'
+            f'<i class="dn"></i>easier</span></div>') if played else ""
+    return f'<div class="strip">{cells}</div>{foot}'
+
 
 
 def pts(v, flip=False):
@@ -378,35 +554,31 @@ def render_team(t, d, ranks, open_=False):
                   f'<td class="n">{num(p.get("tgt"), 1)}</td>'
                   f'<td class="n">{num(p.get("rec_yds"), 0)}</td>'
                   f'<td class="n">{num(p.get("car"), 1)}</td>'
-                  f'<td class="n">{num(p.get("rush_yds"), 0)}</td></tr>')
+                  f'<td class="n">{num(p.get("rush_yds"), 0)}</td>'
+                  f'<td class="n sep">{pctc(p.get("catchable"))}</td>'
+                  f'<td class="n">{mz(p.get("man_share"), p.get("charted"))}</td>'
+                  f'</tr>')
     ptable = (f'<table class="pl"><thead><tr><th>projected usage</th><th></th>'
               f'<th class="n">tgt</th><th class="n">rec yd</th>'
-              f'<th class="n">car</th><th class="n">ru yd</th></tr></thead>'
-              f'<tbody>{prows}</tbody></table>') if prows else ""
+              f'<th class="n">car</th><th class="n">ru yd</th>'
+              f'<th class="n sep" title="Share of 2025 targets the ball was '
+              f'charted catchable. This tracks the quarterback\'s accuracy '
+              f'more than the receiver\'s hands.">catch</th>'
+              f'<th class="n" title="Share of his charted 2025 targets that '
+              f'came against man coverage.">vs man</th></tr></thead>'
+              f'<tbody>{prows}</tbody></table>'
+              f'<div class="pnote">The last two columns are <b>2025 '
+              f'regular-season charted usage</b>, not projections. Catch rate '
+              f'falls with target depth (82% under 6 yards, 64% past 14), so '
+              f'read it against the route tree rather than as hands. Drop rate '
+              f'is deliberately absent: it measured 0.06 to 0.12 season over '
+              f'season, which is noise.</div>') if prows else ""
 
-    srows = ""
-    for s in (d["sched"].get(t) or []):
-        o = d["teams"].get(s["opp"], {})
-        # Opponent strength in POINTS, like every other figure on the page.
-        # It was the last place still printing a raw rating, which is why the
-        # column read as misaligned: a 6-glyph +0.037 under a two-word header
-        # beside two narrow integer columns.
-        srows += (f'<tr><td class="n wk">{s["week"]}</td>'
-                  f'<td class="ps at">{e(s["at"])}</td>'
-                  f'<td class="nm opp"><span class="ow">'
-                  f'<span class="lg lg-{e(s["opp"])}"></span>'
-                  f'<b>{e(s["opp"])}</b>'
-                  f'<span class="oname">{e(o.get("name") or "")}</span>'
-                  f'</span></td>'
-                  f'<td class="n">{pts(o.get("blended"))}</td>'
-                  f'<td class="n rk">{ranks["net"].get(s["opp"]) or "--"}</td>'
-                  f'</tr>')
-    stable = (f'<table class="pl sch"><thead><tr>'
-              f'<th class="n wk">wk</th><th class="at"></th>'
-              f'<th class="opp">opponent</th>'
-              f'<th class="n">strength</th>'
-              f'<th class="n rk">rank</th></tr></thead>'
-              f'<tbody>{srows}</tbody></table>') if srows else ""
+    stable = sched_strip(d["sched"].get(t) or [], d["teams"],
+                         ranks, pts)
+
+    charting = charting_block(d["chart"].get(t),
+                              d.get("chart_season") or "")
 
     dm = d["drives"].get(t)
     drive = (TV.drive_mix(dm["td"], dm["fg"], dm["dn"], dm["to"])
@@ -505,8 +677,10 @@ def render_team(t, d, ranks, open_=False):
  <div class="note">{e(tm.get("note") or "")}</div>
  <div class="lb sec">People</div>
  {ptable}
+ <div class="lb sec">Tendencies</div>
+ {charting}
  <div class="lb sec">{SEASON} schedule</div>
- <div class="tw">{stable}</div>
+ {stable}
  <div class="lb sec">Season log</div>
  {timeline}
 </section>'''
@@ -599,24 +773,54 @@ LEDGER_CSS = """
   padding-left:16px}
 .ledger table.pl td.ps{color:var(--ink3);font-size:10.5px;
   letter-spacing:.06em;text-transform:uppercase}
-.ledger table.sch td.nm,.ledger table.pl td.nm{font-weight:600}
+.ledger table.pl td.nm{font-weight:600}
 /* Fixed layout so the numeric columns hold position instead of floating
    beside a stretched opponent name. */
-.ledger table.sch{table-layout:fixed}
-.ledger table.sch .wk{width:46px}
-.ledger table.sch .at{width:36px;color:var(--ink3)}
-.ledger table.sch .rk{width:54px}
-.ledger table.sch th:nth-child(4),.ledger table.sch td:nth-child(4){width:96px}
-/* NEVER display:flex on a td. It removes the cell from the table
-   formatting context, so it stops sizing with its column and the row drifts
-   out of line with the header - which is exactly how this table broke. Flex
-   an inner wrapper instead and leave the cell alone. */
-.ledger table.sch td.opp{white-space:nowrap;overflow:hidden}
-.ledger table.sch td.opp .ow{display:flex;align-items:center;gap:7px;
-  overflow:hidden}
-.ledger table.sch td.opp .lg{width:16px;height:16px;flex:0 0 16px}
-.ledger table.sch .oname{color:var(--ink3);font-weight:400;font-size:11px;
-  overflow:hidden;text-overflow:ellipsis}
+.ledger table.pl .sep{border-left:1px solid var(--line)}
+.ledger .pnote{padding:6px 16px 0;font-size:10.5px;color:var(--ink3);
+  max-width:72ch;line-height:1.5}
+.ledger .chart-note{padding:8px 16px 2px;font-size:11px;color:var(--ink3);
+  max-width:74ch;line-height:1.5}
+.ledger .ctable{padding:6px 16px 2px;display:flex;flex-direction:column;gap:4px}
+.ledger .crow{display:grid;grid-template-columns:104px minmax(0,1fr) 46px 34px;
+  align-items:center;gap:9px;font-size:11.5px}
+.ledger .crow .cl{color:var(--ink2)}
+.ledger .crow .cb{height:9px;background:var(--row);border:1px solid var(--line)}
+.ledger .crow .cb i{display:block;height:100%;background:var(--accent)}
+.ledger .crow .cv{text-align:right;font-weight:700;
+  font-variant-numeric:tabular-nums}
+.ledger .crow .cr{text-align:right;color:var(--ink3);font-size:10px;
+  font-variant-numeric:tabular-nums}
+
+/* Season strength strip. Grid, not a table: there is no header row to drift
+   out of alignment, and grid tracks cannot desynchronize the way table columns
+   did across 32 pages. */
+.ledger .strip{display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(58px,1fr));
+  gap:1px;background:var(--line);border:1px solid var(--line);margin:10px 16px 0}
+.ledger .wkc{background:var(--panel);padding:7px 2px 6px;text-align:center;
+  display:flex;flex-direction:column;align-items:center;gap:3px}
+.ledger .wkc .wkn{font-size:9px;letter-spacing:.12em;color:var(--ink3)}
+.ledger .wkc .bar{height:38px;width:100%;display:flex;flex-direction:column;
+  justify-content:center;align-items:center;position:relative}
+.ledger .wkc .bar::before{content:"";position:absolute;left:12%;right:12%;
+  top:50%;height:1px;background:var(--line)}
+.ledger .wkc .bar i{width:11px;display:block;position:absolute}
+.ledger .wkc .bar i.up{bottom:50%;background:var(--warn)}
+.ledger .wkc .bar i.dn{top:50%;background:var(--play)}
+.ledger .wkc .opp{display:flex;align-items:center;justify-content:center;
+  gap:3px;font-size:11px;font-weight:700;line-height:1}
+.ledger .wkc .opp .lg{width:13px;height:13px;flex:0 0 13px}
+.ledger .wkc .val{font-size:9.5px;color:var(--ink3);
+  font-variant-numeric:tabular-nums}
+.ledger .wkc.bye{opacity:.45}
+.ledger .wkc.bye .opp{font-size:9px;letter-spacing:.1em;color:var(--ink3)}
+.ledger .sfoot{display:flex;flex-wrap:wrap;gap:16px;padding:8px 16px 0;
+  font-size:11px;color:var(--ink3)}
+.ledger .sfoot .lgd{display:flex;align-items:center;gap:5px}
+.ledger .sfoot .lgd i{width:9px;height:9px;display:inline-block}
+.ledger .sfoot .lgd i.up{background:var(--warn)}
+.ledger .sfoot .lgd i.dn{background:var(--play);margin-left:7px}
 .ledger .tw{overflow-x:auto}
 .ledger .sec{padding:16px 16px 0;color:var(--ink);font-weight:600}
 

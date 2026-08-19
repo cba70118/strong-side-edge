@@ -61,6 +61,19 @@ METRICS = [
     ("def explosive rate",  "def_explosive_rate",       "season+"),
     ("pressure generated",  "pressure_rate_made",       "faster"),
     ("sack rate generated", "sack_rate_made",           "lagging"),
+    ("CHARTING: WHAT WAS CALLED", None, None),
+    ("play action rate",    "play_action_rate",         "call"),
+    ("screen rate",         "screen_rate",              "call"),
+    ("RPO rate",            "rpo_rate",                 "call"),
+    ("motion rate",         "motion_rate",              "call"),
+    ("no huddle rate",      "no_huddle_rate",           "call"),
+    ("shotgun rate",        "shotgun_rate",             "call"),
+    ("blitzers sent",       "blitz_sent",               "call"),
+    ("man coverage rate",   "man_rate",                 "call"),
+    ("CHARTING: WHAT HAPPENED", None, None),
+    ("catchable rate",      "catchable_rate",           "outcome"),
+    ("drop rate",           "drop_rate",                "outcome"),
+    ("contested rate",      "contested_rate",           "outcome"),
     ("NOISE CONTROLS", None, None),
     ("red zone TD rate",    "rz_td_rate",               "noise"),
     ("third down rate",     "third_down_rate",          "noise"),
@@ -98,9 +111,23 @@ situ AS (
 SELECT t.*, p.pressure_rate_allowed, p.sack_rate_allowed, p.pressure_to_sack,
        p.time_to_throw, p.pressure_rate_made, p.sack_rate_made, p.native,
        s.rz_td_rate, s.third_down_rate, s.ypc,
+       ch.play_action_rate, ch.screen_rate, ch.rpo_rate,
+       ch.motion_rate, ch.no_huddle_rate, ch.shotgun_rate,
+       ch.blitz_sent, ch.man_rate,
+       pc.catchable_rate, pc.drop_rate, pc.contested_rate,
        t.def_turnovers_forced - t.off_turnovers AS to_margin
 FROM mart.team_game t
 LEFT JOIN mart.team_pressure p USING (game_id, team)
+LEFT JOIN mart.team_charting ch USING (game_id, team)
+LEFT JOIN (
+    -- receiver outcome rates rolled to the team-game that produced them, so
+    -- they sit on the same grain as everything else in this screen
+    SELECT game_id, team,
+           sum(catchable_rate * targets) / nullif(sum(targets), 0) AS catchable_rate,
+           sum(drop_rate * targets)      / nullif(sum(targets), 0) AS drop_rate,
+           sum(contested_rate * targets) / nullif(sum(targets), 0) AS contested_rate
+    FROM mart.player_charting GROUP BY 1, 2
+) pc USING (game_id, team)
 LEFT JOIN situ s USING (game_id, team)
 WHERE t.game_type = 'REG' AND t.season >= {season};
 """
