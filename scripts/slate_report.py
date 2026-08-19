@@ -144,6 +144,23 @@ tr.grp td{font-size:10px;letter-spacing:.16em;text-transform:uppercase;
 .v-candidate{color:var(--pos)} .v-wrongsign{color:var(--neg)}
 .dim{color:var(--ink3)}
 .rate{color:var(--ink2)}
+.ptable{margin-top:12px;border-top:1px solid var(--rule)}
+.prow{display:grid;grid-template-columns:150px minmax(0,1fr) 78px;
+  align-items:center;gap:12px;padding:6px 0;
+  border-bottom:1px solid var(--line)}
+.prow .pg{font-weight:700;font-size:12.5px}
+.prow .pg .at{font-weight:400;color:var(--ink3)}
+.prow .pg em{display:block;font-style:normal;font-size:9px;
+  letter-spacing:.14em;text-transform:uppercase;color:var(--warn)}
+.prow.unan .pg em{color:var(--warn)}
+.pbar{display:flex;height:17px;gap:1px;overflow:hidden}
+.pseg{display:flex;align-items:center;justify-content:center;
+  font-size:9.5px;letter-spacing:.06em;background:var(--row);
+  color:var(--ink2);white-space:nowrap;min-width:0}
+.pseg:first-child{background:var(--accent);color:var(--bg)}
+.prow .pln{text-align:right;font-size:11.5px;color:var(--ink3);
+  font-variant-numeric:tabular-nums}
+.psub{font-size:10.5px;color:var(--ink3);padding:0 0 6px 162px}
 .method{margin-top:26px;padding-top:16px;border-top:2px solid var(--rule)}
 .method .lede{max-width:82ch}
 .ct{margin-left:7px;font-weight:400;letter-spacing:0;opacity:.7}
@@ -876,6 +893,83 @@ turned Buffalo at Houston, the closest window on the board, from a real
   <th class="s n">Hit</th><th class="s n">Breakeven</th>
   <th class="s n">Edge</th><th class="n">Sim&nbsp;SE</th><th class="s">Verdict</th>
 </tr></thead><tbody>{''.join(rows)}</tbody></table></div>"""
+
+
+def panel_picks(con, season, week):
+    """Published expert picks, as a consensus split rather than a tip sheet."""
+    if con is None:
+        return ""
+    try:
+        rows = con.execute("""
+            SELECT source, away, home, pick_type, pick_team, pick_line,
+                   expert, url
+            FROM ref.expert_pick_current
+            WHERE season = ? AND week = ?
+        """, [season, week]).fetchall()
+    except Exception:
+        return ""
+    if not rows:
+        return ('<h4 class="nh">Published picks</h4>'
+                '<p class="lede">Nothing published for this week yet. The '
+                'grids fill in during the week; capture runs with the daily '
+                'refresh.</p>')
+
+    games, experts, link = {}, set(), None
+    for src, away, home, ptype, team, line, expert, url in rows:
+        g = games.setdefault((away, home), {"ats": {}, "su": {}, "line": {}})
+        bucket = "ats" if ptype == "ats" else "su"
+        g[bucket].setdefault(team, []).append(expert)
+        if line is not None:
+            g["line"][team] = line
+        experts.add((src, expert))
+        link = link or url
+
+    out = ""
+    for (away, home), g in sorted(games.items()):
+        ats, su = g["ats"], g["su"]
+        n = sum(len(v) for v in ats.values())
+        sides = sorted(ats.items(), key=lambda kv: -len(kv[1]))
+        if not sides:
+            continue
+        top, rest = sides[0], sides[1:]
+        unan = len(sides) == 1 and n > 1
+        bar = ""
+        for team, who in sides:
+            w = len(who) / n * 100
+            bar += (f'<span class="pseg" style="width:{w:.1f}%" '
+                    f'title="{e(", ".join(sorted(who)))}">'
+                    f'{e(team)} {len(who)}</span>')
+        ln = g["line"].get(top[0])
+        sub = []
+        if su:
+            s2 = sorted(su.items(), key=lambda kv: -len(kv[1]))
+            sub.append("ESPN straight up " + ", ".join(
+                f"{e(k)} {len(v)}" for k, v in s2))
+        out += (
+            f'<div class="prow{" unan" if unan else ""}">'
+            f'<div class="pg">{e(away)} <span class="at">at</span> {e(home)}'
+            f'{"<em>unanimous</em>" if unan else ""}</div>'
+            f'<div class="pbar">{bar}</div>'
+            f'<div class="pln">{(f"{top[0]} {ln:+.1f}" if ln is not None else "")}</div>'
+            f'</div>'
+            + (f'<div class="psub">{" &middot; ".join(sub)}</div>' if sub else ""))
+
+    n_ats = len({x for s, x in experts if s == "cbs"})
+    n_su = len({x for s, x in experts if s == "espn"})
+    return f'''<h4 class="nh">Published picks &middot; {len(games)} games</h4>
+<p class="lede"><b>Consensus, not a tip sheet.</b> {n_ats} writers picking
+against the spread and {n_su} picking straight up. The bar is how the room
+split; hover a segment for names. A <b>unanimous</b> game is the one worth
+knowing about, because that is where our own number disagreeing is most in need
+of an explanation and least likely to be an edge.</p>
+<p class="lede" style="margin-top:9px">These are stored and graded here against
+the <b>closing</b> line, never against the record an outlet publishes for
+itself. For scale, the best-known name on that grid shows 141-138-3 lifetime
+against the spread, which is 50.5%. ESPN picks are kept separate and labeled:
+they are straight-up winners, so they are nearly all favorites and carry
+information only on close games.
+{f'<a href="{e(link)}" target="_blank" rel="noopener">source</a>' if link else ""}</p>
+<div class="ptable">{out}</div>'''
 
 
 def panel_reads(games):
@@ -1674,7 +1768,9 @@ def build(data, con=None, dash=None) -> str:
         ("teams", "Teams", teams_n, teams_html),
         ("players", "Player season", None,
          panel_player_season(con, meta.get("season", 2026))),
-        ("reads", "Outside reads", n_read, panel_reads(games)),
+        ("reads", "Outside reads", n_read,
+         panel_picks(con, meta.get("season", 2026),
+                     meta.get("week", 1)) + panel_reads(games)),
         ("metrics", "Metrics", None, panel_metrics(con)),
         ("news", "News", None, panel_news(con)),
         ("season", "Season", None, panel_season(con, meta.get("season", 2026),

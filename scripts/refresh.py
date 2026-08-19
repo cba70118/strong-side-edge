@@ -145,6 +145,11 @@ def main() -> int:
     # News tab.
     run([PY, str(ROOT / "scripts" / "capture_news.py")], "news")
 
+    # Published expert picks. Fails soft like the news capture: the grids do
+    # not exist until the week is posted, and an empty week is not an error.
+    run([PY, str(ROOT / "scripts" / "capture_picks.py"),
+         "--season", str(a.season), "--week", str(week)], "picks")
+
     # Pressure rate and the two metric screens. Cheap, and they must be rebuilt
     # in-season: the stability table is the thing that says whether a week-5
     # read is a team or a schedule, so it has to include the season underway.
