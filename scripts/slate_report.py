@@ -161,6 +161,12 @@ tr.grp td{font-size:10px;letter-spacing:.16em;text-transform:uppercase;
 .prow .pln{text-align:right;font-size:11.5px;color:var(--ink3);
   font-variant-numeric:tabular-nums}
 .psub{font-size:10.5px;color:var(--ink3);padding:0 0 6px 162px}
+.starters{display:inline-flex;align-items:center;gap:6px;margin-left:12px;
+  font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--ink2);cursor:pointer}
+.starters input{accent-color:var(--accent)}
+em.tag.dim{color:var(--ink3);border-color:var(--ink3)}
+em.tag.neg{color:var(--neg);border-color:var(--neg)}
 .method{margin-top:26px;padding-top:16px;border-top:2px solid var(--rule)}
 .method .lede{max-width:82ch}
 .ct{margin-left:7px;font-weight:400;letter-spacing:0;opacity:.7}
@@ -401,13 +407,25 @@ JS_POS = r"""<script>
         cell.style.display = on ? '' : 'none';
       });
     });
+    var starters = document.getElementById('startersOnly');
+    var only = starters ? starters.checked : false;
     var i=0;
     rows.forEach(function(r){
       var on = (pos==='ALL') || (r.dataset.pos===pos);
+      /* A backup's projection is conditional on him starting, so it is hidden
+         by default rather than deleted. Depth rank 1 is the starter; 9 is the
+         placeholder for a player on no 2026 chart at all. */
+      if(on && only && r.dataset.rank !== '1') on = false;
       r.hidden = !on;
       if(on){ i++; r.cells[0].textContent = i; }
     });
   }
+  var so = document.getElementById('startersOnly');
+  if(so) so.addEventListener('change', function(){
+    var cur = btns.filter(function(b){
+      return b.getAttribute('aria-pressed')==='true'; })[0];
+    apply(cur ? cur.dataset.pos : 'ALL');
+  });
   btns.forEach(function(b){
     b.addEventListener('click',function(){
       btns.forEach(function(x){x.setAttribute('aria-pressed',String(x===b));});
@@ -1305,7 +1323,8 @@ def panel_player_season(con, season):
                    proj_pass_tds, p10_pass_tds, p90_pass_tds,
                    availability_flag, proj_games, proj_games_rush,
                    pr_receptions, proj_receptions,
-                   p10_receptions, p90_receptions
+                   p10_receptions, p90_receptions,
+                   depth_rank, depth_pos
             FROM mart.player_season_projection WHERE season = ?
             ORDER BY coalesce(proj_pass_yards, 0)
                    + coalesce(proj_rec_yards, 0)
@@ -1362,10 +1381,17 @@ def panel_player_season(con, season):
          ptg, pry2, p10y, p90y, prtd2, p10td, p90td,
          pc, prush, p10r, p90r,
          ppy, p10py, p90py, pptd, p10ptd, p90ptd, flag, pgm, rgm,
-         prc_rec, prec, p10rec, p90rec) = r
+         prc_rec, prec, p10rec, p90rec, drank, dpos) = r
         f = f'<em class="tag warn">{prg} gm</em>' if flag else ""
+        # Role, from the depth chart refreshed three days ago. A backup's
+        # projection is a conditional statement - his rate over a full season -
+        # and unlabeled beside a starter's line it reads as the same claim.
+        if drank is None:
+            f += '<em class="tag neg">not on a 2026 chart</em>'
+        elif drank > 1:
+            f += f'<em class="tag dim">{e(dpos or pos)}{drank}</em>'
         body += (
-            f'<tr data-pos="{e(pos)}">'
+            f'<tr data-pos="{e(pos)}" data-rank="{drank or 9}">'
             f'<td class="n" data-v="{i + 1}">{i + 1}</td>'
             f'<td class="nm" data-v="{e(nm)}">{e(nm)}{f}</td>'
             f'<td class="ps" data-v="{e(tm)}">{e(tm)}</td>'
@@ -1426,6 +1452,7 @@ def panel_player_season(con, season):
     counts = {}
     for r in rows:
         counts[r[2]] = counts.get(r[2], 0) + 1
+    starters = sum(1 for r in rows if (r[31] or 9) == 1)
     btns = ('<button data-pos="ALL" aria-pressed="true">All'
             f'<span class="ct">{len(rows)}</span></button>')
     for pos in ("QB", "WR", "RB", "TE"):
@@ -1435,7 +1462,9 @@ def panel_player_season(con, season):
     n_flag = sum(1 for r in rows if r[30])
     n_gm = next((r[31] for r in rows if r[2] == "QB" and r[31]), 17.0)
 
-    return f'''<div class="posfilter" role="group" aria-label="Filter by position">{btns}</div>
+    return f'''<div class="posfilter" role="group" aria-label="Filter by position">{btns}
+<label class="starters"><input type="checkbox" id="startersOnly" checked>
+starters only <span class="ct">{starters}</span></label></div>
 <div class="tw"><table class="pseason"><thead>
  <tr class="grp">
   <th colspan="5" class="gwas">2025 actual</th>
@@ -1473,7 +1502,15 @@ def panel_player_season(con, season):
 </thead><tbody>{body}</tbody></table></div>
 <div class="method">
 <h4 class="nh">How these are built</h4>
-<p class="lede"><b>A full 17-game season, on purpose.</b> These project
+<p class="lede"><b>Role comes from the depth chart, not last season.</b>
+Every line is gated on the chart refreshed <b>2026-08-16</b>, which is the
+authority on both club and job. That corrected <b>8</b> quarterbacks who were
+carrying the wrong 2026 team from a stale roster file, and it labels the
+<b>15</b> who are not their team&rsquo;s starter. A backup&rsquo;s projection is
+a conditional statement, his rate across a full season, so it is hidden behind
+<b>starters only</b> rather than deleted: useful for a QB2 who may take over,
+misleading sitting unlabeled beside a starter.</p>
+<p class="lede" style="margin-top:11px"><b>A full 17-game season, on purpose.</b> These project
 production, not availability. An earlier version discounted every line to the
 {n_gm:.0f} games this population actually averages, which made every healthy
 season look like a forecast of decline. It was not one: on a per-game basis

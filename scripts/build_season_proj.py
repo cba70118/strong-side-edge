@@ -449,6 +449,69 @@ def build_extras(con) -> None:
             f"{f'{r[6]:.1f}-{r[7]:.1f}':>12}")
 
 
+DEPTH_SQL = """
+-- The current depth chart is the authority on BOTH club and role. The roster
+-- file lags it, which is how a quarterback ended up projected for a team he
+-- had left.
+CREATE OR REPLACE TEMP VIEW depth_now AS
+WITH latest AS (SELECT max(dt) AS d FROM raw.depth_charts)
+SELECT gsis_id,
+       any_value(team)   AS depth_team,
+       min(pos_rank)     AS depth_rank,
+       any_value(pos_abb) AS depth_pos
+FROM raw.depth_charts, latest
+WHERE dt = latest.d AND gsis_id IS NOT NULL
+GROUP BY gsis_id;
+"""
+
+
+def apply_depth(con) -> None:
+    """Attach club and role from the current chart, and correct the club.
+
+    A player absent from every chart keeps depth_rank NULL, which the page
+    renders as "not on a 2026 depth chart" rather than as a starter.
+    """
+    con.execute(DEPTH_SQL)
+    for col, typ in (("depth_team", "VARCHAR"), ("depth_rank", "INTEGER"),
+                     ("depth_pos", "VARCHAR"), ("team_moved", "BOOLEAN")):
+        con.execute(f"ALTER TABLE mart.player_season_projection "
+                    f"ADD COLUMN IF NOT EXISTS {col} {typ}")
+    con.execute("""
+        UPDATE mart.player_season_projection p
+        SET depth_team = d.depth_team,
+            depth_rank = d.depth_rank,
+            depth_pos  = d.depth_pos,
+            team_moved = (d.depth_team IS NOT NULL AND d.depth_team <> p.team)
+        FROM depth_now d WHERE d.gsis_id = p.gsis_id
+    """)
+    # the chart wins on club
+    moved = con.execute("""
+        SELECT count(*) FROM mart.player_season_projection
+        WHERE team_moved
+    """).fetchone()[0]
+    con.execute("""
+        UPDATE mart.player_season_projection
+        SET team = depth_team WHERE team_moved
+    """)
+    miss = con.execute("""
+        SELECT count(*) FROM mart.player_season_projection
+        WHERE season = ? AND depth_rank IS NULL
+    """, [SEASON]).fetchone()[0]
+    log(f"  depth chart: {moved} players moved to their current club, "
+        f"{miss} not on any chart")
+    log("")
+    log("  quarterbacks by role:")
+    for r in con.execute("""
+        SELECT coalesce(cast(depth_rank AS VARCHAR), 'none') AS rk,
+               count(*), round(avg(proj_pass_yards))
+        FROM mart.player_season_projection
+        WHERE season = ? AND position = 'QB'
+        GROUP BY 1 ORDER BY 1
+    """, [SEASON]).fetchall():
+        log(f"    QB{r[0]:<6}{r[1]:>3} players, mean {r[2]:.0f} projected yards")
+
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--db", type=Path, default=DEFAULT_DB)
@@ -457,6 +520,7 @@ def main():
     try:
         rc = build(con)
         build_extras(con)
+        apply_depth(con)
         return rc
     finally:
         con.close()
