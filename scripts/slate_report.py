@@ -369,14 +369,17 @@ JS_POS = r"""<script>
   var tbl=document.querySelector('table.pseason'); if(!tbl) return;
   var btns=[].slice.call(wrap.querySelectorAll('button'));
   var rows=[].slice.call(tbl.querySelectorAll('tbody tr'));
-  /* Which column group each position cares about. A QB and an RB share no
-     primary stat, so showing every column for everyone leaves the table two
-     thirds empty. */
-  var SHOW={QB:'cpass', WR:'crec', TE:'crec', RB:'crush', ALL:'crec'};
+  /* Every position shows EVERY yardage it can actually accumulate:
+     quarterbacks rush, backs catch, receivers take handoffs. All shows the
+     position-neutral totals instead, because comparing a passing line to a
+     target line down one table taught nobody anything. */
+  var SHOW={QB:['cpass','crush'], RB:['crush','crec'],
+            WR:['crec','crush'], TE:['crec','crush'], ALL:['ctot']};
+  var GROUPS=['cpass','crec','crush','ctot'];
   function apply(pos){
-    var keep=SHOW[pos]||'crec';
-    ['cpass','crec','crush'].forEach(function(cls){
-      var on=(cls===keep);
+    var keep=SHOW[pos]||['ctot'];
+    GROUPS.forEach(function(cls){
+      var on=keep.indexOf(cls)>=0;
       [].forEach.call(tbl.querySelectorAll('.'+cls),function(cell){
         cell.style.display = on ? '' : 'none';
       });
@@ -1206,9 +1209,11 @@ def panel_player_season(con, season):
                    proj_carries, proj_rush_yards, p10_rush_yards, p90_rush_yards,
                    proj_pass_yards, p10_pass_yards, p90_pass_yards,
                    proj_pass_tds, p10_pass_tds, p90_pass_tds,
-                   availability_flag, proj_games, proj_games_rush
+                   availability_flag, proj_games, proj_games_rush,
+                   pr_receptions, proj_receptions,
+                   p10_receptions, p90_receptions
             FROM mart.player_season_projection WHERE season = ?
-            ORDER BY coalesce(proj_pass_yards, 0) * 0.35
+            ORDER BY coalesce(proj_pass_yards, 0)
                    + coalesce(proj_rec_yards, 0)
                    + coalesce(proj_rush_yards, 0) DESC
         """, [season]).fetchall()
@@ -1230,6 +1235,27 @@ def panel_player_season(con, season):
             return 0
         return v / g
 
+    def _n(x):
+        return x or 0
+
+    def tot25(r):
+        """All 2025 yardage, whatever its source."""
+        return _n(r[10]) + _n(r[5]) + _n(r[8])      # pass + rec + rush
+
+    def td25(r):
+        return _n(r[11]) + _n(r[6])                 # pass TD + rec TD
+
+    def totp(r):
+        return _n(r[24]) + _n(r[14]) + _n(r[21])    # projected pass/rec/rush
+
+    def tdp(r):
+        return _n(r[27]) + _n(r[17])                # projected pass/rec TD
+
+    def touch(r):
+        """Opportunities: targets plus carries. Pass attempts stay out on
+        purpose, since 600 dropbacks and 250 touches are not the same unit."""
+        return _n(r[13]) + _n(r[20])
+
     def band(lo, hi, dp=0):
         if lo is None or hi is None or (lo == 0 and hi == 0):
             return "&mdash;"
@@ -1241,7 +1267,8 @@ def panel_player_season(con, season):
          prat, prpy, prptd, prints,
          ptg, pry2, p10y, p90y, prtd2, p10td, p90td,
          pc, prush, p10r, p90r,
-         ppy, p10py, p90py, pptd, p10ptd, p90ptd, flag, pgm, rgm) = r
+         ppy, p10py, p90py, pptd, p10ptd, p90ptd, flag, pgm, rgm,
+         prc_rec, prec, p10rec, p90rec) = r
         f = f'<em class="tag warn">{prg} gm</em>' if flag else ""
         body += (
             f'<tr data-pos="{e(pos)}">'
@@ -1250,6 +1277,16 @@ def panel_player_season(con, season):
             f'<td class="ps" data-v="{e(tm)}">{e(tm)}</td>'
             f'<td class="ps pos" data-v="{e(pos)}">{e(pos)}</td>'
             f'<td class="n was" data-v="{prg or 0}">{c(prg)}</td>'
+            # Total production, the one quantity every position shares. This
+            # is what the All view compares; anything else puts a quarterback
+            # and a slot receiver in the same column and asks the reader to
+            # pretend that means something.
+            f'<td class="n was ctot" data-v="{tot25(r)}">{c(tot25(r))}</td>'
+            f'<td class="n was ctot" data-v="{td25(r)}">{c(td25(r))}</td>'
+            f'<td class="n proj strong ctot" data-v="{totp(r)}">'
+            f'{c(totp(r))}</td>'
+            f'<td class="n proj ctot" data-v="{tdp(r)}">{c(tdp(r), 1)}</td>'
+            f'<td class="n proj ctot" data-v="{touch(r)}">{c(touch(r), 1)}</td>'
             # --- passing, QB only
             f'<td class="n was cpass" data-v="{prat or 0}">{c(prat)}</td>'
             f'<td class="n was cpass" data-v="{prpy or 0}">{c(prpy)}</td>'
@@ -1265,9 +1302,14 @@ def panel_player_season(con, season):
             f'{band(p10ptd, p90ptd, 1)}</td>'
             # --- receiving
             f'<td class="n was crec" data-v="{prtg or 0}">{c(prtg)}</td>'
+            f'<td class="n was crec" data-v="{prc_rec or 0}">{c(prc_rec)}</td>'
             f'<td class="n was crec" data-v="{pry or 0}">{c(pry)}</td>'
             f'<td class="n was crec" data-v="{prrtd or 0}">{c(prrtd)}</td>'
             f'<td class="n proj crec" data-v="{ptg or 0}">{c(ptg, 1)}</td>'
+            f'<td class="n proj strong crec" data-v="{prec or 0}">'
+            f'{c(prec, 1)}</td>'
+            f'<td class="n band crec" data-v="{p10rec or 0}">'
+            f'{band(p10rec, p90rec)}</td>'
             f'<td class="n proj strong crec" data-v="{pry2 or 0}">{c(pry2)}</td>'
             f'<td class="n proj rate crec" data-v="{per(pry2, pgm)}">'
             f'{c(per(pry2, pgm), 1)}</td>'
@@ -1303,24 +1345,31 @@ def panel_player_season(con, season):
 <div class="tw"><table class="pseason"><thead>
  <tr class="grp">
   <th colspan="5" class="gwas">2025 actual</th>
+  <th colspan="2" class="gwas ctot">2025 total</th>
+  <th colspan="3" class="gproj ctot">2026 total</th>
   <th colspan="4" class="gwas cpass">passing</th>
   <th colspan="5" class="gproj cpass">2026 passing</th>
-  <th colspan="3" class="gwas crec">receiving</th>
-  <th colspan="6" class="gproj crec">2026 receiving</th>
+  <th colspan="4" class="gwas crec">receiving</th>
+  <th colspan="8" class="gproj crec">2026 receiving</th>
   <th colspan="2" class="gwas crush">rushing</th>
   <th colspan="4" class="gproj crush">2026 rushing</th>
  </tr>
  <tr>
   <th class="s n">#</th><th class="s">player</th><th class="s">tm</th>
   <th class="s">pos</th><th class="s n was">gm</th>
+  <th class="s n was ctot">yds</th><th class="s n was ctot">TD</th>
+  <th class="s n ctot">yards</th><th class="s n ctot">TDs</th>
+  <th class="s n ctot">touch</th>
   <th class="s n was cpass">att</th><th class="s n was cpass">yds</th>
   <th class="s n was cpass">TD</th><th class="s n was cpass">INT</th>
   <th class="s n cpass">yards</th>
   <th class="s n cpass">yd/gm</th><th class="s n cpass">band</th>
   <th class="s n cpass">TDs</th><th class="s n cpass">band</th>
-  <th class="s n was crec">tgt</th><th class="s n was crec">yds</th>
+  <th class="s n was crec">tgt</th><th class="s n was crec">rec</th>
+  <th class="s n was crec">yds</th>
   <th class="s n was crec">TD</th>
-  <th class="s n crec">tgt</th><th class="s n crec">yards</th><th class="s n crec">yd/gm</th>
+  <th class="s n crec">tgt</th><th class="s n crec">rec</th>
+  <th class="s n crec">band</th><th class="s n crec">yards</th><th class="s n crec">yd/gm</th>
   <th class="s n crec">band</th><th class="s n crec">TDs</th>
   <th class="s n crec">band</th>
   <th class="s n was crush">car</th><th class="s n was crush">yds</th>

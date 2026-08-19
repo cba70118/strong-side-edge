@@ -79,6 +79,14 @@ PASS_TD_BAND = {"p10": 0.72, "p50": 0.95, "p90": 1.36}  # +17.2% at k=300
 # through almost untouched. k chosen on the fit period alone lands on 300 and is
 # worth +3.5% holdout MAE. Yards were tested the same way and REFUSED the
 # retune, so they keep k=40.
+# Catch rate carries at +0.609, an order above yards per target at +0.136,
+# so receptions project. k chosen on the fit period alone, worth +6.9%.
+SHRINK_CATCH = 60.0
+REC_BAND = {"p10": 0.68, "p50": 0.96, "p90": 1.34}
+# A quarterback's carries are a scheme decision that can change overnight,
+# which is why this band is the widest on the page.
+QB_RUSH_K = 10.0
+QB_RUSH_BAND = {"p10": 0.38, "p50": 0.85, "p90": 1.59}
 SHRINK_PASS_TD = 300.0
 QB_GAMES_CONST = 17.0
 REC_GAMES_CONST = 17.0
@@ -237,7 +245,9 @@ def build_extras(con) -> None:
                 "proj_pass_yards", "p10_pass_yards", "p90_pass_yards",
                 "proj_pass_tds", "p10_pass_tds", "p90_pass_tds",
                 "pr_attempts", "pr_pass_yards", "pr_pass_tds", "pr_ints",
-                "proj_games", "proj_games_rush"):
+                "proj_games", "proj_games_rush",
+                "pr_receptions", "proj_receptions",
+                "p10_receptions", "p90_receptions"):
         con.execute(f"ALTER TABLE mart.player_season_projection "
                     f"ADD COLUMN IF NOT EXISTS {col} DOUBLE")
 
@@ -330,6 +340,79 @@ def build_extras(con) -> None:
     # Every group is projected over fewer than 17 games because that is what
     # the population actually plays. Storing the basis makes the discount
     # visible on the page instead of looking like a forecast of decline.
+    # Receptions. Same shape as the TD update: prior counts, shrunk rate,
+    # applied to the projected target volume that is already on the row.
+    con.execute("""
+        WITH pr AS (
+            SELECT player_id, sum(receptions) AS rec, sum(targets) AS tg
+            FROM raw.stats_player_week
+            WHERE season = ? AND season_type = 'REG'
+            GROUP BY 1
+        ),
+        lg AS (
+            SELECT sum(receptions) / nullif(sum(targets), 0) AS cr
+            FROM raw.stats_player_week
+            WHERE season = ? AND season_type = 'REG'
+        )
+        UPDATE mart.player_season_projection p SET
+            pr_receptions   = pr.rec,
+            proj_receptions = round(p.proj_targets
+                * ((pr.rec + lg.cr * ?) / (pr.tg + ?)), 1),
+            p10_receptions  = round(p.proj_targets
+                * ((pr.rec + lg.cr * ?) / (pr.tg + ?)) * ?, 1),
+            p90_receptions  = round(p.proj_targets
+                * ((pr.rec + lg.cr * ?) / (pr.tg + ?)) * ?, 1)
+        FROM pr, lg WHERE pr.player_id = p.gsis_id AND pr.tg > 0
+    """, [PRIOR, PRIOR, SHRINK_CATCH, SHRINK_CATCH,
+          SHRINK_CATCH, SHRINK_CATCH, REC_BAND["p10"],
+          SHRINK_CATCH, SHRINK_CATCH, REC_BAND["p90"]])
+
+    # Quarterbacks rush. Leaving these NULL understated every mobile passer.
+    con.execute("""
+        WITH pr AS (
+            SELECT player_id, sum(carries) AS car, sum(rushing_yards) AS yds,
+                   count(*) AS games
+            FROM raw.stats_player_week
+            WHERE season = ? AND season_type = 'REG'
+            GROUP BY 1
+        ),
+        -- Aggregate to the player-season BEFORE filtering on attempts.
+        -- Applying "attempts >= 100" to a weekly row matches nobody, which
+        -- silently returned a NULL league rate and nulled every projection
+        -- downstream while the update still reported success.
+        lg AS (
+            SELECT sum(y) / nullif(sum(v), 0) AS ypc,
+                   avg(v * 1.0 / nullif(g, 0))  AS cpg
+            FROM (
+                SELECT player_id, sum(carries) AS v, sum(rushing_yards) AS y,
+                       count(*) AS g
+                FROM raw.stats_player_week
+                WHERE season = ? AND season_type = 'REG'
+                GROUP BY 1 HAVING sum(attempts) >= 200
+            )
+        )
+        UPDATE mart.player_season_projection p SET
+            pr_carries      = pr.car,
+            pr_rush_yards   = pr.yds,
+            proj_carries    = round((pr.car + lg.cpg * 2.0)
+                / (pr.games + 2.0) * ?, 1),
+            proj_rush_yards = round((pr.car + lg.cpg * 2.0)
+                / (pr.games + 2.0) * ?
+                * ((pr.yds + lg.ypc * ?) / (pr.car + ?)), 0),
+            p10_rush_yards  = round((pr.car + lg.cpg * 2.0)
+                / (pr.games + 2.0) * ?
+                * ((pr.yds + lg.ypc * ?) / (pr.car + ?)) * ?, 0),
+            p90_rush_yards  = round((pr.car + lg.cpg * 2.0)
+                / (pr.games + 2.0) * ?
+                * ((pr.yds + lg.ypc * ?) / (pr.car + ?)) * ?, 0),
+            proj_games_rush = ?
+        FROM pr, lg
+        WHERE pr.player_id = p.gsis_id AND p.position = 'QB' AND pr.car > 0
+    """, [PRIOR, PRIOR, RUSH_GAMES_CONST, RUSH_GAMES_CONST, QB_RUSH_K,
+          QB_RUSH_K, RUSH_GAMES_CONST, QB_RUSH_K, QB_RUSH_K,
+          QB_RUSH_BAND["p10"], RUSH_GAMES_CONST, QB_RUSH_K, QB_RUSH_K,
+          QB_RUSH_BAND["p90"], RUSH_GAMES_CONST])
+
     # Receiving and rushing were fit on DIFFERENT games constants, so one
     # column cannot label both. A running back with 981 projected rush yards
     # over 12.54 games is 78.2 a game; printing 14.76 beside it would state a
@@ -344,7 +427,13 @@ def build_extras(con) -> None:
                     "WHERE position = 'QB'").fetchone()[0]
     td = con.execute("SELECT count(*) FROM mart.player_season_projection "
                      "WHERE proj_rec_tds IS NOT NULL").fetchone()[0]
+    rc = con.execute("SELECT count(*) FROM mart.player_season_projection "
+                     "WHERE proj_receptions IS NOT NULL").fetchone()[0]
+    qr = con.execute("SELECT count(*) FROM mart.player_season_projection "
+                     "WHERE position = 'QB' AND proj_rush_yards IS NOT NULL"
+                     ).fetchone()[0]
     log(f"  added {n} quarterbacks and receiving TDs on {td} skill players")
+    log(f"  receptions on {rc} players, rushing on {qr} quarterbacks")
     log("")
     log("  top projected passers:")
     log(f"    {'player':<24}{'tm':<5}{'yards':>7}{'band':>16}{'TDs':>6}"
