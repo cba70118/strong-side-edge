@@ -884,16 +884,52 @@ def panel_sim(games, meta):
       {sgn(tn['achieved_margin'])} / {tn['achieved_total']:.1f}</span></div>
   <div class="scb">{fig}{stats}</div>
 </div>""")
+    # What the slate actually looks like, rather than how the sim works.
+    # A cover line sitting ON 3 or 7 is the single most valuable thing a
+    # reader can notice, because those two margins are 23% of all games.
+    live = [g for g in games if not g.get("shape_gated")]
+    on_key, near_key = [], []
+    for g in live:
+        ln = [m for m in g["markets"] if m["type"] == "Side"][0]["market_line"]
+        if ln is None:
+            continue
+        a = abs(ln)
+        if a in (3.0, 7.0):
+            on_key.append((g, a))
+        elif min(abs(a - 3), abs(a - 7)) == 0.5:
+            near_key.append((g, a))
+    n_gate = len(games) - len(live)
+
+    def _nm(g):
+        return f'{g["away"]} at {g["home"]}'
+
+    bits = []
+    if on_key:
+        who = ", ".join(f"{_nm(g)} on {k:g}" for g, k in on_key[:3])
+        bits.append(f"<b>{len(on_key)}</b> of this week&rsquo;s lines sit "
+                    f"right on a key number &mdash; {who}")
+    if near_key:
+        bits.append(f"<b>{len(near_key)}</b> more land a half point off one, "
+                    f"which is usually where the value is")
+    if not bits:
+        bits.append("No line this week sits on 3 or 7, which is unusual and "
+                    "means the cheap edges are not there")
+    sim_read = (". ".join(bits) + ". Margins of 3 and 7 are nearly a quarter "
+                "of all NFL games, so whether your number sits on that spike "
+                "or beside it matters more than a whole point anywhere else.")
+
+    sim_tail = ((f"{n_gate} games are too lopsided for the sim to reach "
+                 f"their line. " if n_gate != 1 else
+                 "One game is too lopsided for the sim to reach its line. ")
+                if n_gate else "")
+    sim_tail += ("Scoring here runs in 3s and 7s with no missed extra points, "
+                 "so totals near 46 come out about a point light.")
+
     return f"""
-<p class="lede">Every game played out 20,000 times, drive by drive. The chart
-is where those games finished, with the cover line drawn on it. Football scores
-pile up on 3 and 7, so what you want to see is whether your line sits on a
-spike or just off one. We take the center from the market and simulate the
-shape around it.</p>
+<p class="lede">{sim_read}</p>
 <div class="simgrid">{''.join(cards)}</div>
-<p class="lede" style="margin-top:13px">Scores here come in 3s and 7s, with no
-missed extra points, so totals around 46 run about a point light. The margin
-numbers are solid.</p>"""
+<p class="lede" style="margin-top:13px">{sim_tail} Each game is played out
+20,000 times, drive by drive, with the center taken from the market.</p>"""
 
 
 def panel_proj(games):
@@ -1068,12 +1104,28 @@ def panel_picks(con, season, week):
             f'</div>'
             + (f'<div class="psub">{" &middot; ".join(sub)}</div>' if sub else ""))
 
+    unan = [k for k, g in games.items()
+            if len(g["ats"]) == 1 and sum(len(v) for v in g["ats"].values()) > 1]
+    splits = sorted(
+        ((k, sorted((len(v) for v in g["ats"].values()), reverse=True))
+         for k, g in games.items() if len(g["ats"]) > 1),
+        key=lambda kv: kv[1][0] - kv[1][1])
     n_ats = len({x for s, x in experts if s == "cbs"})
+    picks_read = (
+        (f"The room is unanimous on <b>{len(unan)}</b> game"
+         f"{'s' if len(unan) != 1 else ''}"
+         + (": " + ", ".join(f"{a} at {h}" for a, h in unan[:3]) if unan
+            else "") + ". "
+         if unan else "Not one game has all of them on the same side. ")
+        + (f"The closest call is <b>{splits[0][0][0]} at {splits[0][0][1]}</b> "
+           f"at {splits[0][1][0]}&ndash;{splits[0][1][1]}. "
+           if splits else "")
+        + f"That is {n_ats} CBS writers against the spread; hover a bar for "
+          f"names. Where they agree and we do not, we had better be able to "
+          f"say why.")
     n_su = len({x for s, x in experts if s == "espn"})
     return f'''<h4 class="nh">Published picks &middot; {len(games)} games</h4>
-<p class="lede">How the {n_ats} CBS writers split on each game. Hover a bar
-for names. The <b>unanimous</b> ones are the ones to notice: if we like the
-other side there, we had better be able to say why.</p>
+<p class="lede">{picks_read}</p>
 <p class="lede" style="margin-top:9px">We grade these against the closing line
 ourselves rather than trusting the records they publish. For scale, the
 best-known name there is 141-138-3 lifetime, which is a coin flip.
@@ -1655,9 +1707,26 @@ def panel_news(con):
         return ('<p class="lede">No news captured yet &mdash; run '
                 '<span class="mono">capture_news.py</span>.</p>')
 
-    by_status = {}
+    by_status, by_team = {}, {}
     for r in inj:
         by_status[r[3]] = by_status.get(r[3], 0) + 1
+        if r[3] in ("Out", "Doubtful", "Injured Reserve"):
+            by_team[r[0]] = by_team.get(r[0], 0) + 1
+    ranked = sorted(by_team.items(), key=lambda kv: (-kv[1], kv[0]))
+    # a tie is not a "hardest hit"; say so rather than picking one arbitrarily
+    top = ranked[0][1] if ranked else 0
+    worst = [x for x in ranked if x[1] == top][:3]
+    n_out = sum(v for k, v in by_status.items()
+                if k in ("Out", "Doubtful", "Injured Reserve"))
+    news_read = (
+        f"<b>{len(inj)}</b> players are carrying something right now and "
+        f"<b>{n_out}</b> of them will not play. "
+        + ((f"{worst[0][0]} is worst off with {worst[0][1]}. "
+            if len(worst) == 1 else
+            ", ".join(w[0] for w in worst) + f" lead with {top} each. ")
+           if worst else "")
+        + f"Another <b>{by_status.get('Questionable', 0)}</b> are questionable, "
+        f"which by Sunday mostly means they play.")
     chips = " ".join(
         f'<span class="pill {"play" if s == "Questionable" else "pass"}">'
         f'{e(s)} {n}</span>'
@@ -1679,13 +1748,10 @@ def panel_news(con):
            if r[3] else e(r[1]))
         + f'</div><p>{e(str(r[2] or "")[:260])}</p></li>' for r in news)
 
-    return f'''<p class="lede">Who is hurt and what is being written about each team. The
-market has already priced the injury report by the time you read it, so this is
-here to explain a line rather than beat one.</p>
-<p class="lede" style="margin-top:11px">Status as of
-<b>{e(str(cap)[:16])}</b>. Players listed Active are omitted: they are the
-absence of news, and they were 508 of the 800 rows. Headlines link out to the
-source; only the headline and one line of description are stored.</p>
+    return f'''<p class="lede">{news_read}</p>
+<p class="lede" style="margin-top:11px">As of <b>{e(str(cap)[:16])}</b>.
+Healthy players are left off. The market has this priced long before you read
+it, so treat it as background on a line rather than a way to beat one.</p>
 <div class="chips">{chips}</div>
 <h4 class="nh">Injury report &middot; {len(inj)} players</h4>
 <div class="tw"><table><thead><tr>
@@ -1698,34 +1764,6 @@ source; only the headline and one line of description are stored.</p>
 
 H_METRICS_1 = '<h4 class="nh">1. Does it describe the team?</h4>'
 H_METRICS_2 = '<h4 class="nh">2. Does it beat the price?</h4>'
-
-LEDE_METRICS_1 = """<div class="method"><p class="lede">How much a
-team&rsquo;s first N games tell you about the rest of that same season,
-2020&ndash;2025. A stat you can use early is high <b>and flat</b> across the
-row. One still climbing at N=10 needs most of a season first.</p>
-"""
-
-LEDE_METRICS_2 = """<p class="lede" style="margin-top:12px">Three
-surprises. Pressure rate beats sack rate on defense, where sacks are basically
-noise &mdash; but it flips on offense, because sacks taken follow the
-quarterback and quarterbacks are steady. Pace never really settles. And points
-scored repeats better than passing EPA.</p>
-
-<p class="lede" style="margin-top:11px">Steady is not the same as useful,
-though. Below, each stat is checked against the final margin with the closing
-line held fixed. The raw column makes the point: everything looks predictive
-until you account for the line.</p>
-"""
-
-LEDE_METRICS_3 = """<p class="lede" style="margin-top:12px">Nothing
-clears. The strongest of the 17 sits well inside what chance alone would
-produce, and the two that scraped past pointed the wrong way. Third time this
-project has landed here by a different route.</p>
-<p class="lede" style="margin-top:11px">Which is the point of the tab. These
-numbers explain why a line sits where it does and whether a result was earned
-or lucky. They do not pick sides.</p></div>
-"""
-
 
 EXPLORER_METRICS = [
     # label, source, column, weight, direction, stability key, format
@@ -1917,10 +1955,16 @@ def panel_distribution(con, season):
             f'<span class="dsh sh-{shape}">{shape}</span></div>')
     if not rows:
         return ""
+    tight = rows.count("sh-tight")
+    spread = rows.count("sh-spread")
+    dist_read = (
+        f"<b>{tight}</b> of the {tight + spread + rows.count('sh-even')} stats "
+        f"here have the league bunched so tightly that a rank in them is close "
+        f"to meaningless &mdash; fourth and twelfth are the same team with a "
+        f"different schedule. Only <b>{spread}</b> separate teams by real "
+        f"distance. Each row is where all 32 actually land, median marked.")
     return f'''<h4 class="nh">League shape</h4>
-<p class="lede">Where the 32 teams actually land. Fourth in a bunched-up league
-is not fourth with daylight, and a rank will not tell you which one you have.
-<b>Tight</b> means the league is packed, so the rank barely means anything.</p>
+<p class="lede">{dist_read}</p>
 <div class="dtable">{rows}</div>'''
 
 
@@ -1949,6 +1993,39 @@ def panel_metrics(con):
                 '<span class="mono">metric_stability.py</span> and '
                 '<span class="mono">metric_edge_test.py</span>.</p>')
 
+    # Name the extremes rather than explain the test. What a reader wants
+    # is which numbers hold up, not how holding up was defined.
+    scored = [(m, n8, grp) for m, _c, _a, _b, n8, _v, grp in
+              [(r[0], r[1], r[2], r[3], r[4], r[6], r[7]) for r in stab]
+              if n8 is not None]
+    best = sorted(scored, key=lambda x: -x[1])[:3]
+    # the group labels are upper case in the table; comparing to
+    # "Defense" matched nothing and silently dropped the sentence
+    dfn = [x for x in scored if str(x[2]).upper() == "DEFENSE"]
+    noise = [x for x in scored if x[1] < 0.20]
+    stab_read = (
+        '<div class="method"><p class="lede">The steadiest things we measure '
+        'are what a coach decides, not how well anyone plays: '
+        + ", ".join(f"<b>{e(m)}</b> at {v:.2f}" for m, v, _g in best)
+        + ". A team that motions in September motions in December. "
+        + (f"Defense is the opposite &mdash; nothing on that side gets past "
+           f"<b>{max(x[1] for x in dfn):.2f}</b>, so an elite defense through "
+           f"four games is usually four soft opponents. " if dfn else "")
+        + (f"{len(noise)} of these never carry at all." if noise else "")
+        + '</p><p class="lede" style="margin-top:11px">Each cell is how much a '
+          'team&rsquo;s first N games told you about the rest of that same '
+          'season, 2020&ndash;2025. Useful means high <b>and</b> flat across '
+          'the row.</p>')
+
+    stab_tail = (
+        '<p class="lede" style="margin-top:12px">Three surprises. Pressure '
+        'rate beats sack rate on defense, where sacks are basically noise, but '
+        'it flips on offense: sacks taken follow the quarterback, and '
+        'quarterbacks are steady. Pace never really settles. And points scored '
+        'repeats better than passing EPA.</p>'
+        '<p class="lede" style="margin-top:11px">Steady is not the same as '
+        'useful, though.</p>')
+
     def hue(v):
         if v is None:
             return ""
@@ -1973,6 +2050,20 @@ def panel_metrics(con):
                   f'<td><span class="vd v-{verd.lower().replace(" ", "")}">'
                   f'{e(verd)}</span></td></tr>')
 
+    top = max(edge, key=lambda r: abs(r[5])) if edge else None
+    edge_read = (
+        '<p class="lede" style="margin-top:12px">Nothing here beats the '
+        'closing line. '
+        + (f"The strongest of the {len(edge)} is <b>{e(top[0])}</b>, and it is "
+           f"still well inside what chance alone produces &mdash; and it "
+           f"points the wrong way. " if top else "")
+        + 'That is the third time this project has landed here by a different '
+          'route, after the team ratings and the drive simulator.</p>'
+          '<p class="lede" style="margin-top:11px">Which is the point of the '
+          'tab. These numbers tell you why a line sits where it does and '
+          'whether a result was earned or lucky. They do not pick sides.</p>'
+          '</div>')
+
     erows = "".join(
         f'<tr><td class="nm">{e(m)}</td><td class="n">{g:,}</td>'
         f'<td class="n dim">{raw:+.3f}</td>'
@@ -1994,14 +2085,14 @@ def panel_metrics(con):
         '<th class="s n">N=8</th><th class="s n">N=10</th>'
         '<th class="s">verdict</th>'
         '</tr></thead><tbody>' + srows + '</tbody></table></div>'
-    ) + LEDE_METRICS_1 + LEDE_METRICS_2 + H_METRICS_2 + (
+    ) + stab_read + stab_tail + H_METRICS_2 + (
         '<div class="tw"><table><thead><tr>'
         '<th class="s">metric</th><th class="s n">games</th>'
         '<th class="s n">raw</th><th class="s n">partial</th>'
         '<th class="s n">SE</th><th class="s n">t</th>'
         '<th class="s">verdict</th>'
         '</tr></thead><tbody>' + erows + '</tbody></table></div>'
-    ) + LEDE_METRICS_3
+    ) + edge_read
 
 
 def build(data, con=None, dash=None) -> str:
