@@ -144,6 +144,42 @@ tr.grp td{font-size:10px;letter-spacing:.16em;text-transform:uppercase;
 .v-candidate{color:var(--pos)} .v-wrongsign{color:var(--neg)}
 .dim{color:var(--ink3)}
 .rate{color:var(--ink2)}
+.mfilter{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 6px}
+.mfilter button{font:inherit;font-size:10px;letter-spacing:.12em;
+  text-transform:uppercase;padding:5px 10px;background:var(--panel);
+  color:var(--ink2);border:1px solid var(--line);cursor:pointer}
+.mfilter button[aria-pressed="true"]{background:var(--accent);color:var(--bg);
+  border-color:var(--accent)}
+.xtable{max-height:640px;overflow:auto}
+table.explorer{font-size:11.5px;border-collapse:separate;border-spacing:0}
+table.explorer th{position:sticky;top:0;background:var(--panel);z-index:2;
+  white-space:nowrap}
+table.explorer th em{display:block;font-style:normal;font-size:8.5px;
+  color:var(--ink3);letter-spacing:.06em}
+table.explorer th.sorted{color:var(--accent)}
+table.explorer td{white-space:nowrap;font-variant-numeric:tabular-nums}
+table.explorer td em{font-style:normal;font-size:8.5px;color:var(--ink3);
+  margin-left:3px}
+table.explorer .sticky{position:sticky;left:0;background:var(--panel);z-index:1}
+table.explorer th.sticky{z-index:3}
+table.explorer td .lg{width:14px;height:14px;margin-right:5px;
+  vertical-align:-2px}
+.dtable{margin-top:10px;display:flex;flex-direction:column;gap:2px}
+.drow{display:grid;grid-template-columns:118px 92px 54px 54px 54px 58px;
+  align-items:center;gap:9px;font-size:11px;padding:3px 0;
+  border-bottom:1px solid var(--line)}
+.drow .dl{color:var(--ink2);display:flex;align-items:baseline;gap:5px}
+.drow .dl em{font-style:normal;font-size:8.5px;color:var(--ink3)}
+.drow .dv{text-align:right;color:var(--ink3);
+  font-variant-numeric:tabular-nums}
+.drow .dm{text-align:right;font-weight:700;
+  font-variant-numeric:tabular-nums}
+.drow .dsh{font-size:9px;letter-spacing:.1em;text-transform:uppercase;
+  text-align:right}
+.sh-tight{color:var(--neg)} .sh-even{color:var(--ink3)}
+.sh-spread{color:var(--play)}
+svg.hist rect{fill:var(--line)}
+svg.hist rect.pin{fill:var(--accent)}
 .ptable{margin-top:12px;border-top:1px solid var(--rule)}
 .prow{display:grid;grid-template-columns:150px minmax(0,1fr) 78px;
   align-items:center;gap:12px;padding:6px 0;
@@ -386,6 +422,73 @@ JS = r"""<script>
 # so it cannot collide with the brief's own tab handler.
 JS_LEDGER = "<script>" + TP.LEDGER_JS + "</script>"
 JS_THEME = "<script>" + DS.TOGGLE_JS + "</script>"
+
+JS_METRICS = r"""<script>
+(function(){
+  /* Explorer: conference and division chips, plus click-to-sort. Sorting
+     reads data-v off each cell rather than the rendered text, because the
+     rendered text carries a rank badge and a percent sign. */
+  var tbl=document.querySelector('table.explorer');
+  var wrap=document.querySelector('.mfilter');
+  if(tbl && wrap){
+    var rows=[].slice.call(tbl.querySelectorAll('tbody tr'));
+    var btns=[].slice.call(wrap.querySelectorAll('button'));
+    btns.forEach(function(b){
+      b.addEventListener('click',function(){
+        btns.forEach(function(x){
+          x.setAttribute('aria-pressed', String(x===b)); });
+        var f=b.dataset.f;
+        rows.forEach(function(r){
+          r.hidden = !(f==='all' || r.dataset.conf===f || r.dataset.div===f);
+        });
+      });
+    });
+    var heads=[].slice.call(tbl.querySelectorAll('thead th'));
+    var dir={};
+    heads.forEach(function(th,i){
+      if(i<1) return;
+      th.style.cursor='pointer';
+      th.addEventListener('click',function(){
+        dir[i] = !dir[i];
+        var body=tbl.querySelector('tbody');
+        rows.sort(function(a,b){
+          var av=a.cells[i].dataset.v, bv=b.cells[i].dataset.v;
+          if(av===undefined){
+            av=a.cells[i].textContent; bv=b.cells[i].textContent;
+            return dir[i] ? av.localeCompare(bv) : bv.localeCompare(av);
+          }
+          return dir[i] ? (+av)-(+bv) : (+bv)-(+av);
+        });
+        rows.forEach(function(r){ body.appendChild(r); });
+        heads.forEach(function(h){ h.classList.remove('sorted'); });
+        th.classList.add('sorted');
+      });
+    });
+  }
+
+  /* Stability table: hide what does not clear the bar, so the table answers
+     "what can I trust in week 4" instead of listing everything equally. */
+  var st=document.querySelector('table.stab');
+  var sw=document.querySelectorAll('.mfilter')[1];
+  if(st && sw){
+    var srows=[].slice.call(st.querySelectorAll('tbody tr'));
+    var sb=[].slice.call(sw.querySelectorAll('button'));
+    sb.forEach(function(b){
+      b.addEventListener('click',function(){
+        sb.forEach(function(x){
+          x.setAttribute('aria-pressed', String(x===b)); });
+        var lim = b.dataset.r==='all' ? -1 : parseFloat(b.dataset.r);
+        srows.forEach(function(r){
+          var v=parseFloat(r.dataset.r4);
+          /* group headings carry 99 so they never vanish under a filter */
+          r.hidden = !(lim<0 || v>=lim || v===99);
+        });
+      });
+    });
+  }
+})();
+</script>"""
+
 JS_POS = r"""<script>
 (function(){
   var wrap=document.querySelector('.posfilter'); if(!wrap) return;
@@ -1689,6 +1792,207 @@ it earned that.</p></div>
 """
 
 
+EXPLORER_METRICS = [
+    # label, source, column, weight, direction, stability key, format
+    ("off EPA", "g", "off_epa_play_neutral", "off_plays_neutral", "high",
+     "off EPA/play", "n3"),
+    ("off succ", "g", "off_success", "off_plays", "high",
+     "off success rate", "pct"),
+    ("explosive", "g", "off_explosive_rate", "off_plays", "high",
+     "off explosive rate", "pct"),
+    ("press allw", "p", "pressure_rate_allowed", "dropbacks", "low",
+     "pressure allowed", "pct"),
+    ("def EPA", "g", "def_epa_play_neutral", "def_plays_neutral", "low",
+     "def EPA/play", "n3"),
+    ("def succ", "g", "def_success", "def_plays", "low",
+     "def success rate", "pct"),
+    ("def expl", "g", "def_explosive_rate", "def_plays", "low",
+     "def explosive rate", "pct"),
+    ("press gen", "p", "pressure_rate_made", "pass_snaps_faced", "high",
+     "pressure generated", "pct"),
+    ("PROE", "g", "off_proe_neutral", "off_plays_neutral", "style",
+     "PROE", "n1"),
+    ("pace", "g", "off_sec_per_play_neutral", "off_plays_neutral", "style",
+     "pace sec/play", "n1"),
+    ("play act", "c", "play_action_rate", "plays", "style",
+     "play action rate", "pct"),
+    ("motion", "c", "motion_rate", "plays", "style", "motion rate", "pct"),
+    ("shotgun", "c", "shotgun_rate", "plays", "style", "shotgun rate", "pct"),
+    ("screens", "c", "screen_rate", "plays", "style", "screen rate", "pct"),
+    ("RPO", "c", "rpo_rate", "plays", "style", "RPO rate", "pct"),
+    ("blitz", "c", "blitz_sent", "plays", "style", "blitzers sent", "n2"),
+    ("man cov", "c", "man_rate", "coverage_charted", "style",
+     "man coverage rate", "pct"),
+]
+SRC_TBL = {"g": "mart.team_game", "p": "mart.team_pressure",
+           "c": "mart.team_charting"}
+SRC_GATE = {"g": "AND game_type = 'REG'", "p": "AND native = 1", "c": ""}
+
+
+def _spark_hist(vals, mark, w=90, h=16, bins=12):
+    """The league's shape for one metric, with this team's place marked.
+
+    A rank of #4 in a tight cluster and a #4 with daylight are different facts.
+    The histogram is the part a rank cannot say.
+    """
+    vals = [v for v in vals if v is not None]
+    if len(vals) < 8:
+        return ""
+    lo, hi = min(vals), max(vals)
+    if hi <= lo:
+        return ""
+    counts = [0] * bins
+    for v in vals:
+        counts[min(bins - 1, int((v - lo) / (hi - lo) * bins))] += 1
+    peak = max(counts) or 1
+    bw = w / bins
+    bars = "".join(
+        f'<rect x="{i * bw:.1f}" y="{h - c / peak * h:.1f}" '
+        f'width="{bw - 1:.1f}" height="{c / peak * h:.1f}"/>'
+        for i, c in enumerate(counts) if c)
+    x = (mark - lo) / (hi - lo) * w if mark is not None else None
+    pin = (f'<rect class="pin" x="{max(0, min(w - 1.5, x)):.1f}" y="0" '
+           f'width="1.5" height="{h}"/>') if x is not None else ""
+    return (f'<svg class="hist" viewBox="0 0 {w} {h}" width="{w}" '
+            f'height="{h}" aria-hidden="true">{bars}{pin}</svg>')
+
+
+def panel_explorer(con, season):
+    """All 32 teams, all 17 metrics, filterable and sortable."""
+    if con is None:
+        return ""
+    try:
+        meta = dict((r[0], (r[1], r[2])) for r in con.execute(
+            "SELECT team_abbr, team_conf, team_division FROM raw.teams"
+        ).fetchall())
+    except Exception:
+        return ""
+    data, stab = {}, {}
+    try:
+        stab = dict(con.execute(
+            "SELECT metric, n8 FROM mart.metric_stability").fetchall())
+    except Exception:
+        pass
+    for label, src, col, wcol, direction, skey, fmt in EXPLORER_METRICS:
+        try:
+            data[label] = dict(con.execute(f"""
+                SELECT team, sum({col} * {wcol}) / nullif(sum({wcol}), 0)
+                FROM {SRC_TBL[src]}
+                WHERE season = ? {SRC_GATE[src]} AND {col} IS NOT NULL
+                GROUP BY 1
+            """, [season]).fetchall())
+        except Exception:
+            data[label] = {}
+    teams = sorted(t for t in meta if any(t in d for d in data.values()))
+    if not teams:
+        return ""
+
+    def fmt_val(v, fmt):
+        if v is None:
+            return "&mdash;"
+        if fmt == "pct":
+            return f"{v * 100:.0f}%"
+        return f"{v:.{int(fmt[1])}f}"
+
+    head = '<th class="s sticky">team</th><th class="s">div</th>'
+    for label, _s, _c, _w, direction, skey, _f in EXPLORER_METRICS:
+        r = stab.get(skey)
+        head += (f'<th class="s n" title="year-over-year stability '
+                 f'{("%.2f" % r) if r is not None else "not measured"}">'
+                 f'{e(label)}<em>{("%.2f" % r)[1:] if r is not None else ""}'
+                 f'</em></th>')
+
+    body = ""
+    for tm in teams:
+        conf, div = meta.get(tm, ("", ""))
+        cells = ""
+        for label, _s, _c, _w, direction, _k, fmt in EXPLORER_METRICS:
+            vals = data[label]
+            v = vals.get(tm)
+            others = [x for x in vals.values() if x is not None]
+            rank = ""
+            if v is not None and direction != "style" and len(others) > 1:
+                order = sorted(others, reverse=(direction == "high"))
+                rank = f'<em>{order.index(v) + 1}</em>'
+            cells += (f'<td class="n" data-v="{v if v is not None else -999}">'
+                      f'{fmt_val(v, fmt)}{rank}</td>')
+        body += (f'<tr data-conf="{e(conf)}" data-div="{e(div)}">'
+                 f'<td class="nm sticky">'
+                 f'<span class="lg lg-{e(tm)}"></span>{e(tm)}</td>'
+                 f'<td class="ps">{e(div.replace(conf + " ", ""))}</td>'
+                 f'{cells}</tr>')
+
+    divs = sorted({d for _c, d in meta.values()})
+    chips = ('<button data-f="all" aria-pressed="true">All 32</button>'
+             '<button data-f="AFC" aria-pressed="false">AFC</button>'
+             '<button data-f="NFC" aria-pressed="false">NFC</button>')
+    for d in divs:
+        chips += (f'<button data-f="{e(d)}" aria-pressed="false">'
+                  f'{e(d)}</button>')
+
+    return f'''<h4 class="nh">Team explorer</h4>
+<p class="lede">All 32 teams on every metric measured, {season} regular season.
+Click a column head to sort; the small figure on each head is that
+metric&rsquo;s own year-over-year stability, so a column with a low number
+should move your read less than one with a high number. Rank is shown only
+where a metric has a better end: nobody is better for motioning more.</p>
+<div class="mfilter" role="group" aria-label="Filter teams">{chips}</div>
+<div class="tw xtable"><table class="explorer"><thead><tr>{head}</tr></thead>
+<tbody>{body}</tbody></table></div>'''
+
+
+def panel_distribution(con, season):
+    """Where the league actually sits on each metric, not just the order."""
+    if con is None:
+        return ""
+    rows = ""
+    try:
+        stab = dict(con.execute(
+            "SELECT metric, n8 FROM mart.metric_stability").fetchall())
+    except Exception:
+        stab = {}
+    for label, src, col, wcol, direction, skey, fmt in EXPLORER_METRICS:
+        try:
+            vals = [v for _t, v in con.execute(f"""
+                SELECT team, sum({col} * {wcol}) / nullif(sum({wcol}), 0)
+                FROM {SRC_TBL[src]}
+                WHERE season = ? {SRC_GATE[src]} AND {col} IS NOT NULL
+                GROUP BY 1
+            """, [season]).fetchall() if v is not None]
+        except Exception:
+            continue
+        if len(vals) < 8:
+            continue
+        vals.sort()
+        lo, hi = vals[0], vals[-1]
+        p25, p50, p75 = (vals[len(vals) // 4], vals[len(vals) // 2],
+                         vals[3 * len(vals) // 4])
+        spread = (p75 - p25) / (hi - lo) if hi > lo else 0
+        shape = ("tight" if spread < 0.28 else
+                 "spread" if spread > 0.42 else "even")
+        f = ((lambda v: f"{v * 100:.0f}%") if fmt == "pct"
+             else (lambda v: f"{v:.{int(fmt[1])}f}"))
+        r = stab.get(skey)
+        rows += (
+            f'<div class="drow"><span class="dl">{e(label)}'
+            f'<em>r{("%.2f" % r)[1:] if r is not None else "--"}</em></span>'
+            f'{_spark_hist(vals, p50)}'
+            f'<span class="dv">{f(lo)}</span>'
+            f'<span class="dm">{f(p50)}</span>'
+            f'<span class="dv">{f(hi)}</span>'
+            f'<span class="dsh sh-{shape}">{shape}</span></div>')
+    if not rows:
+        return ""
+    return f'''<h4 class="nh">League shape</h4>
+<p class="lede">A rank of #4 is not one fact. Fourth in a <b>tight</b> league
+and fourth with daylight are different, and a rank alone cannot tell you which.
+Each row is where all 32 teams actually sit, low to high, with the median
+marked. <b>tight</b> means the middle half of the league is packed into a
+narrow band, so a rank there is worth very little; <b>spread</b> means the
+ranks are separated by real distance.</p>
+<div class="dtable">{rows}</div>'''
+
+
 def panel_metrics(con):
     """Which advanced metrics describe a team, and which of them beat a price.
 
@@ -1727,11 +2031,13 @@ def panel_metrics(con):
     for m, claim, n4, n6, n8, n10, verd, grp in stab:
         if grp != seen:
             seen = grp
-            srows += '<tr class="grp"><td colspan="7">' + e(grp) + '</td></tr>'
+            srows += ('<tr class="grp" data-r4="99"><td colspan="7">'
+                      + e(grp) + '</td></tr>')
         cells = "".join(
             f'<td class="n {hue(v)}">{v:.2f}</td>' if v is not None
             else '<td class="n">&middot;</td>' for v in (n4, n6, n8, n10))
-        srows += (f'<tr><td class="nm">{e(m)}</td>'
+        srows += (f'<tr data-r4="{n4 if n4 is not None else -1}">'
+                  f'<td class="nm">{e(m)}</td>'
                   f'<td class="ps">{e(claim)}</td>{cells}'
                   f'<td><span class="vd v-{verd.lower().replace(" ", "")}">'
                   f'{e(verd)}</span></td></tr>')
@@ -1745,8 +2051,13 @@ def panel_metrics(con):
         f'<td><span class="vd v-{v.lower().replace(" ", "")}">{e(v)}</span></td>'
         f'</tr>' for m, g, raw, pc, se, ts, v in edge)
 
-    return H_METRICS_1 + (
-        '<div class="tw"><table><thead><tr>'
+    return (panel_explorer(con, 2025) + panel_distribution(con, 2025)
+            + H_METRICS_1) + (
+        '<div class="mfilter" role="group" aria-label="Filter by usability">'
+        '<button data-r="all" aria-pressed="true">All measured</button>'
+        '<button data-r="0.45" aria-pressed="false">Usable by week 4</button>'
+        '<button data-r="0.30" aria-pressed="false">Carries something</button>'
+        '</div><div class="tw"><table class="stab"><thead><tr>'
         '<th class="s">metric</th><th class="s">claimed</th>'
         '<th class="s n">N=4</th><th class="s n">N=6</th>'
         '<th class="s n">N=8</th><th class="s n">N=10</th>'
@@ -1858,7 +2169,7 @@ def build(data, con=None, dash=None) -> str:
 <nav class="tabs" role="tablist">{nav}</nav>
 {body}
 </div>
-{JS}{JS_LEDGER}{DR.JS}{JS_THEME}{JS_POS}"""
+{JS}{JS_LEDGER}{DR.JS}{JS_THEME}{JS_POS}{JS_METRICS}"""
 
 
 def main() -> int:
