@@ -885,19 +885,15 @@ def panel_sim(games, meta):
   <div class="scb">{fig}{stats}</div>
 </div>""")
     return f"""
-<p class="lede">The simulator supplies <b>shape only</b>. Its own spread has a
-partial correlation of &minus;0.030 with the realised margin once the closing
-line is held fixed, across 816 games, so the center comes from the market and
-only the distribution around it is ours. Each chart is the full simulated
-margin distribution with the cover line drawn on it &mdash; whether the line
-sits on a spike or beside one is the entire question, and a table of four
-percentages could not answer it.</p>
+<p class="lede">Every game played out 20,000 times, drive by drive. The chart
+is where those games finished, with the cover line drawn on it. Football scores
+pile up on 3 and 7, so what you want to see is whether your line sits on a
+spike or just off one. We take the center from the market and simulate the
+shape around it.</p>
 <div class="simgrid">{''.join(cards)}</div>
-<p class="lede" style="margin-top:13px"><b>Known bias.</b> Scoring happens only
-in 3s and 7s here &mdash; no missed extra point, no two-point try &mdash; so
-totals awkward to build from those run thin. Measured against 5,199 games the
-simulator is about 1pp light at a total of 46. Margin key numbers do not share
-this; they validate to 2.5pp.</p>"""
+<p class="lede" style="margin-top:13px">Scores here come in 3s and 7s, with no
+missed extra points, so totals around 46 run about a point light. The margin
+numbers are solid.</p>"""
 
 
 def panel_proj(games):
@@ -955,15 +951,10 @@ def panel_proj(games):
     refuse_txt = ", ".join(f"{v} {k.replace('_', ' ')}"
                            for k, v in sorted(refused.items())) or "none"
     return f"""
-<p class="lede">Each posted line is joined to the projection for that
-player, so a model number and a book number sit in the same row.
-<span class="mono">Our line</span> is the median of the fitted distribution
-&mdash; the number at which we would be indifferent, in the units a book posts.
-The bar is the range where the distribution passes its coverage test &mdash;
-5th&ndash;95th percentile for yardage, tightened to 25th&ndash;75th for
-receptions, each set by measurement rather than assumed. When a book posts a line it is drawn on
-the same bar, and a line landing outside is refused rather than priced off the
-part of the model that does not hold.</p>
+<p class="lede">Our number next to the book's, for every player line posted.
+The bar shows where the model actually holds up; if a book's line falls outside
+it, we leave it alone rather than price it off a part of the model we do not
+trust.</p>
 <div class="note" style="border-left-color:var(--accent)">
 <h3>Live market status</h3>
 <p><b>{posted}</b> player lines posted across the slate, <b>{priced}</b>
@@ -975,11 +966,9 @@ them. Receptions clears too, on a tighter 25&ndash;75% band. An earlier
 non-monotone survival function had made all three look 10pp worse than they
 are and refused receptions outright.</p>
 </div>
-<p class="lede">Week 1 has no current-season data, so every projection is
-maximally shrunk toward baseline and a genuine alpha receiver reads low. The
-band is wide for the same reason, and the pricer uses that: a book posting a
-number past the 95th percentile is refused rather than bet against a
-projection that cannot yet see the season.</p>
+<p class="lede">Week 1 has no season behind it yet, so everything sits close to
+average and the real stars read low. The bands are wide to match, and we pass
+on anything outside them.</p>
 <div class="projg">{''.join(blocks)}</div>"""
 
 
@@ -1082,17 +1071,12 @@ def panel_picks(con, season, week):
     n_ats = len({x for s, x in experts if s == "cbs"})
     n_su = len({x for s, x in experts if s == "espn"})
     return f'''<h4 class="nh">Published picks &middot; {len(games)} games</h4>
-<p class="lede"><b>Consensus, not a tip sheet.</b> {n_ats} writers picking
-against the spread{f", and {n_su} picking straight up" if n_su else ""}. The
-bar is how the room split; hover a segment for names. A <b>unanimous</b> game is the one worth
-knowing about, because that is where our own number disagreeing is most in need
-of an explanation and least likely to be an edge.</p>
-<p class="lede" style="margin-top:9px">These are stored and graded here against
-the <b>closing</b> line, never against the record an outlet publishes for
-itself. For scale, the best-known name on that grid shows 141-138-3 lifetime
-against the spread, which is 50.5%. ESPN&rsquo;s grid is captured too and kept
-separate when it posts: those are straight-up winners, so they are nearly all
-favorites and carry information only on close games.
+<p class="lede">How the {n_ats} CBS writers split on each game. Hover a bar
+for names. The <b>unanimous</b> ones are the ones to notice: if we like the
+other side there, we had better be able to say why.</p>
+<p class="lede" style="margin-top:9px">We grade these against the closing line
+ourselves rather than trusting the records they publish. For scale, the
+best-known name there is 141-138-3 lifetime, which is a coin flip.
 {f'<a href="{e(link)}" target="_blank" rel="noopener">source</a>' if link else ""}</p>
 <div class="ptable">{out}</div>'''
 
@@ -1121,11 +1105,10 @@ def panel_reads(games):
 <td class="mono mut" data-v="{e(k['published'])}">{e(k['published'])}</td></tr>"""))
     rows.sort(key=lambda r: -r[0])
     return f"""
-<p class="lede"><b>Not our opinions, and not inputs to any price on this page.</b>
-Move The Line's recorded positions from ten August shows, kept so a model output
-can be checked against a human read. Only <em>bet</em> means money down; a
-<em>pass</em> with a stated entry plan is a market-timing claim, which is
-testable. Prices are as quoted on air and have moved.</p>
+<p class="lede">Move The Line's calls from ten August shows. Not our opinions
+and not wired into anything &mdash; they are here so we can check our numbers
+against someone else's read. Only <em>bet</em> means money down. Prices are as
+quoted on air and have moved since.</p>
 <div class="tw"><table><thead><tr>
   <th class="s">Team</th><th class="s">Stance</th><th>Position</th>
   <th class="s n">Conv</th><th>Thesis</th><th class="s">Aired</th>
@@ -1619,46 +1602,24 @@ starters only <span class="ct">{starters}</span></label></div>
 </thead><tbody>{body}</tbody></table></div>
 <div class="method">
 <h4 class="nh">How these are built</h4>
-<p class="lede"><b>Role comes from the depth chart, not last season.</b>
-Every line is gated on the chart refreshed <b>2026-08-16</b>, which is the
-authority on both club and job. That corrected <b>8</b> quarterbacks who were
-carrying the wrong 2026 team from a stale roster file, and it labels the
-<b>15</b> who are not their team&rsquo;s starter. A backup&rsquo;s projection is
-a conditional statement, his rate across a full season, so it is hidden behind
-<b>starters only</b> rather than deleted: useful for a QB2 who may take over,
-misleading sitting unlabeled beside a starter.</p>
-<p class="lede" style="margin-top:11px"><b>A full 17-game season, on purpose.</b> These project
-production, not availability. An earlier version discounted every line to the
-{n_gm:.0f} games this population actually averages, which made every healthy
-season look like a forecast of decline. It was not one: on a per-game basis
-<b>16 of 36</b> quarterbacks project up, and the ones that do are exactly the
-weak 2025 seasons. Pool-wide the change is <b>&minus;1.6%</b> per game, which is
-shrinkage toward the league, not pessimism.</p>
-<p class="lede" style="margin-top:11px"><b>Projections, not edges.</b> Each stat
-was backtested the same way, fit on 2021&ndash;22 and scored on 2023&ndash;25,
-against simply reusing last season&rsquo;s total. QB passing yards beat that by
-<b>13.8%</b>, QB passing TDs by <b>17.2%</b>, receiving TDs by <b>13.2%</b>,
-receiving yards by <b>9.6%</b>. None of it is tested against a market: no
-season-long player line exists in either feed, and there is no ADP source
-here.</p>
-<p class="lede" style="margin-top:11px"><b>Every band is its own, and all of
-them were re-measured</b> when the projection moved to a full season. They used
-to be ratios of actual season total to projected total, so they carried the
-spread of missed games as much as of production. Now they compare per-game to
-per-game, which removes availability from both sides: QB passing yards
-0.82&ndash;1.12&times;, QB passing TDs 0.72&ndash;1.36&times;, receiving yards
-0.66&ndash;1.40&times;, rushing yards 0.49&ndash;1.55&times;, and receiving TDs
-<b>0.32&ndash;2.12&times;</b>, still by far the widest because TD-per-target
-carries year over year at only +0.221.</p>
-<p class="lede" style="margin-top:11px">A quarterback&rsquo;s TD rate is shrunk
-far harder than his yards: <b>k=300</b> against roughly 600 attempts rather than
-the 40 used for yardage, chosen on the fit period alone and worth +3.5% out of
-sample. Without it a 46-TD season carried through nearly untouched.
-Interceptions show last season&rsquo;s count and are never projected, since INT
-rate carries at +0.055. QB passing yards is a <b>level, not a ranking</b>: it
-wins on error by shrinking outliers, and correlates with the actual at only
-+0.221. {n_flag} players who played 11 games or fewer are flagged, not
-modeled.</p>
+<p class="lede">Full-season numbers for every starter, with the depth chart
+deciding who counts as one. Backups are still here, tagged QB2 and hidden
+behind <b>starters only</b> &mdash; their number is what they would do if they
+played, which is worth knowing when someone gets hurt.</p>
+
+<p class="lede" style="margin-top:11px">Everyone gets 17 games: these say what
+a player does when he plays, not who gets hurt. Each stat was tested against
+just reusing last year and beat it &mdash; passing yards by 13.8%, passing TDs
+by 17.2%, receiving TDs by 13.2%, receiving yards by 9.6%.</p>
+<p class="lede" style="margin-top:11px">The bands are how wrong each stat
+usually is, measured rather than guessed. Passing yards land within about 20%.
+Receiving touchdowns are the wild one: a 3-TD projection honestly covers 1 to
+6, because touchdowns barely repeat year to year.</p>
+<p class="lede" style="margin-top:11px">Touchdowns get pulled toward the league
+average harder than yards do, because a 46-touchdown season is mostly a great
+year rather than a repeatable rate. Interceptions are last season's count only;
+they are close to random. {n_flag} players who missed most of 2025 carry a
+games tag.</p>
 </div>'''
 
 
@@ -1718,11 +1679,9 @@ def panel_news(con):
            if r[3] else e(r[1]))
         + f'</div><p>{e(str(r[2] or "")[:260])}</p></li>' for r in news)
 
-    return f'''<p class="lede"><b>Context, not a signal.</b> The official injury
-report has a partial correlation of <b>+0.0425</b> with margin once the closing
-spread is held fixed, over 1,609 games &mdash; under the 0.05 bar this project
-uses, and the market visibly prices it already at +0.157 with the spread. So
-nothing here feeds a price. It is here to explain a number, not to move one.</p>
+    return f'''<p class="lede">Who is hurt and what is being written about each team. The
+market has already priced the injury report by the time you read it, so this is
+here to explain a line rather than beat one.</p>
 <p class="lede" style="margin-top:11px">Status as of
 <b>{e(str(cap)[:16])}</b>. Players listed Active are omitted: they are the
 absence of news, and they were 508 of the 800 rows. Headlines link out to the
@@ -1740,55 +1699,31 @@ source; only the headline and one line of description are stored.</p>
 H_METRICS_1 = '<h4 class="nh">1. Does it describe the team?</h4>'
 H_METRICS_2 = '<h4 class="nh">2. Does it beat the price?</h4>'
 
-LEDE_METRICS_1 = """<div class="method"><p class="lede"><b>Stability is not edge, and the
-difference is the whole point.</b> A stable metric is one the market has had
-every chance to price. Points per game is among the most stable numbers on this
-page and knows <b>nothing</b> the closing line does not. So the two tables below
-are separate on purpose: the first asks whether a number is measuring the team
-or the schedule, the second asks whether it beats a price.</p>
-
-<p class="lede" style="margin-top:11px">Each cell is the correlation between a
-team&rsquo;s first N games and the <b>rest of that same season</b>, over
-2020&ndash;2025. Not split-half reliability, which asks an easier question, but
-the one you actually face in week 5, including the part where early opponents
-differ from late ones. A metric is usable when the number is high <b>and
-flat</b> across N. Still climbing at N=10 means it needs a full season. Pressure
-metrics are measured on 2023&ndash;2025 only, where the charting is native.</p>
+LEDE_METRICS_1 = """<div class="method"><p class="lede">How much a
+team&rsquo;s first N games tell you about the rest of that same season,
+2020&ndash;2025. A stat you can use early is high <b>and flat</b> across the
+row. One still climbing at N=10 needs most of a season first.</p>
 """
 
-LEDE_METRICS_2 = """<p class="lede" style="margin-top:12px"><b>Three claims did
-not survive.</b> &ldquo;Prefer pressure rate to sack rate&rdquo; is a
-<b>defensive</b> rule, not a general one: on defense sack rate generated is
-noise (0.01 by N=10) while pressure generated reaches 0.43, but on offense it
-inverts and sack rate <i>allowed</i> (0.49) is the more stable of the two,
-because it carries quarterback identity and a quarterback is more stable than a
-line. Pace was expected to settle in 3&ndash;5 games and never gets past 0.39.
-Points per game was filed as noise and is more stable than pass EPA. Confirmed
-as claimed: PROE settles fast, every defensive metric is weak at every N,
-turnover margin decays toward zero, and red zone TD rate is close to noise.
-Offensive EPA is <b>better</b> than claimed, already usable at N=4.</p>
+LEDE_METRICS_2 = """<p class="lede" style="margin-top:12px">Three
+surprises. Pressure rate beats sack rate on defense, where sacks are basically
+noise &mdash; but it flips on offense, because sacks taken follow the
+quarterback and quarterbacks are steady. Pace never really settles. And points
+scored repeats better than passing EPA.</p>
 
-<p class="lede" style="margin-top:11px">Every metric built point-in-time from
-prior games only, differenced home minus away, then correlated with the margin
-<b>holding the closing spread fixed</b>. The raw column is there to show why raw
-correlation is worthless: everything correlates with margin, and so does the
-spread. Only the partial matters.</p>
+<p class="lede" style="margin-top:11px">Steady is not the same as useful,
+though. Below, each stat is checked against the final margin with the closing
+line held fixed. The raw column makes the point: everything looks predictive
+until you account for the line.</p>
 """
 
-LEDE_METRICS_3 = """<p class="lede" style="margin-top:12px"><b>Nothing
-survives.</b> The largest absolute t across 17 metrics is <b>1.54</b>, and
-screening 17 at once needs about 3.0. At these sample sizes a correlation
-carries a standard error of 0.029 to 0.040 on its own, so a 0.06 partial is one
-and a half standard errors: two metrics nominally clearing a flat 0.05 bar is
-precisely what seventeen draws from noise look like, and both of those came out
-with the <b>wrong sign</b>. This is the third independent route to the same
-conclusion, after opponent-adjusted ratings at &minus;0.04 and the drive
-simulator at &minus;0.030.</p>
-<p class="lede" style="margin-top:11px"><b>So what is any of it for.</b> These
-numbers explain a line, size a result against expectation, and flag when a
-win came from something that will not repeat. Pressure rate is now stored per
-team-game and is new here. None of it enters a price on a side, because none of
-it earned that.</p></div>
+LEDE_METRICS_3 = """<p class="lede" style="margin-top:12px">Nothing
+clears. The strongest of the 17 sits well inside what chance alone would
+produce, and the two that scraped past pointed the wrong way. Third time this
+project has landed here by a different route.</p>
+<p class="lede" style="margin-top:11px">Which is the point of the tab. These
+numbers explain why a line sits where it does and whether a result was earned
+or lucky. They do not pick sides.</p></div>
 """
 
 
@@ -1931,11 +1866,10 @@ def panel_explorer(con, season):
                   f'{e(d)}</button>')
 
     return f'''<h4 class="nh">Team explorer</h4>
-<p class="lede">All 32 teams on every metric measured, {season} regular season.
-Click a column head to sort; the small figure on each head is that
-metric&rsquo;s own year-over-year stability, so a column with a low number
-should move your read less than one with a high number. Rank is shown only
-where a metric has a better end: nobody is better for motioning more.</p>
+<p class="lede">Every team, every stat we track, {season}. Click a heading to
+sort. The small number under each is how much it repeats year to year, so high
+means lean on it. Ranks only show where there is a better end &mdash; nobody
+wins for using more motion.</p>
 <div class="mfilter" role="group" aria-label="Filter teams">{chips}</div>
 <div class="tw xtable"><table class="explorer"><thead><tr>{head}</tr></thead>
 <tbody>{body}</tbody></table></div>'''
@@ -1984,12 +1918,9 @@ def panel_distribution(con, season):
     if not rows:
         return ""
     return f'''<h4 class="nh">League shape</h4>
-<p class="lede">A rank of #4 is not one fact. Fourth in a <b>tight</b> league
-and fourth with daylight are different, and a rank alone cannot tell you which.
-Each row is where all 32 teams actually sit, low to high, with the median
-marked. <b>tight</b> means the middle half of the league is packed into a
-narrow band, so a rank there is worth very little; <b>spread</b> means the
-ranks are separated by real distance.</p>
+<p class="lede">Where the 32 teams actually land. Fourth in a bunched-up league
+is not fourth with daylight, and a rank will not tell you which one you have.
+<b>Tight</b> means the league is packed, so the rank barely means anything.</p>
 <div class="dtable">{rows}</div>'''
 
 
