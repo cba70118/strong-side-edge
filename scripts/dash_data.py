@@ -194,7 +194,7 @@ def build(con, season: int, week: int):
                    row_number() OVER (
                        PARTITION BY l.game_id, l.market_id, l.book_id, l.side_key
                        ORDER BY l.captured_at DESC) rn
-            FROM odds.line_pregame l
+            FROM odds.line_fresh l
             JOIN ref.book b USING (book_id)
             JOIN raw.games g ON g.game_id = l.game_id
             WHERE g.season=? AND g.week=?

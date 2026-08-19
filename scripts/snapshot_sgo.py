@@ -166,6 +166,10 @@ def main() -> int:
     ap.add_argument("--db", type=Path, default=DEFAULT_DB)
     ap.add_argument("--phase", required=True,
                     choices=["opener", "post_wed", "post_fri", "close", "adhoc"])
+    ap.add_argument("--target-week", action="store_true", default=True,
+                    help="window the CURRENT REG week's dates (default)")
+    ap.add_argument("--rolling", dest="target_week", action="store_false",
+                    help="use the old today..today+days window instead")
     ap.add_argument("--days", type=int, default=8,
                     help="capture games kicking off within N days")
     ap.add_argument("--books", default=",".join(BOOKS))
@@ -178,6 +182,38 @@ def main() -> int:
 
     today = datetime.now(timezone.utc).date()
     start, end = today.isoformat(), (today + timedelta(days=a.days)).isoformat()
+    if a.target_week:
+        # THE WINDOW FOLLOWS THE PUBLISHED WEEK. A rolling window from today is
+        # correct in season and points at preseason exhibitions in August, which
+        # is how the Week 1 board went stale for two days while every scheduled
+        # run reported success.
+        _c = None
+        try:
+            # A short read-only connection: the main one is opened later and
+            # the window has to be known before any fetch happens. gameday is
+            # VARCHAR in raw.games, so it needs an explicit cast.
+            _c = duckdb.connect(str(a.db), read_only=True)
+            row = _c.execute("""
+                WITH cw AS (SELECT season, week FROM mart.current_week
+                            WHERE season = (SELECT max(season) FROM raw.games))
+                SELECT min(cast(g.gameday AS DATE)) - INTERVAL 1 DAY,
+                       max(cast(g.gameday AS DATE)) + INTERVAL 1 DAY
+                FROM raw.games g JOIN cw ON g.season = cw.season
+                                        AND g.week = cw.week
+                WHERE g.game_type = 'REG'
+            """).fetchone()
+            if row and row[0] and row[1]:
+                start = str(row[0])[:10]
+                end = str(row[1])[:10]
+                log(f"window follows the current REG week: {start} -> {end}")
+        except Exception as exc:
+            log(f"could not derive the week window ({type(exc).__name__}); "
+                f"falling back to the rolling one")
+        finally:
+            # MUST close, or the main connection cannot open the file with a
+            # different configuration and the whole capture dies.
+            if _c is not None:
+                _c.close()
     books = [b.strip() for b in a.books.split(",")]
 
     con = duckdb.connect(str(a.db))

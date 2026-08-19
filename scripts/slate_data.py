@@ -76,7 +76,7 @@ def quotes_for(con, season: int, week: int):
                    row_number() OVER (
                        PARTITION BY l.game_id, l.market_id, l.book_id, l.side_key
                        ORDER BY l.captured_at DESC) rn
-            FROM odds.line_pregame l
+            FROM odds.line_fresh l
             JOIN ref.book b USING (book_id)
             JOIN raw.games g ON g.game_id = l.game_id
             WHERE g.season = ? AND g.week = ?
@@ -98,7 +98,7 @@ def prop_quotes(con, season, week):
                        PARTITION BY l.game_id, l.market_id, l.book_id,
                                     l.gsis_id, l.side_key
                        ORDER BY l.captured_at DESC) rn
-            FROM odds.line_pregame l
+            FROM odds.line_fresh l
             JOIN ref.book b USING (book_id)
             JOIN ref.market m USING (market_id)
             JOIN raw.games g ON g.game_id = l.game_id
@@ -1053,6 +1053,18 @@ def main() -> int:
                 if m.get("status") == "play")
     log(f"  {ng} games, {data['meta']['books']} books, "
         f"{a.sims:,} sims per game")
+    # SAY WHAT WAS DROPPED. The freshness window can only thin the board, so
+    # it must never do it silently - ten books were sitting 56 hours stale and
+    # counting toward every consensus.
+    try:
+        st = con.execute(
+            "SELECT count(*), coalesce(sum(lines),0) FROM audit.stale_books"
+        ).fetchone()
+        if st and st[0]:
+            log(f"  excluded {st[0]} stale book(s), {st[1]:,} quotes older "
+                f"than 24h (audit.stale_books)")
+    except Exception:
+        pass
     log(f"  {plays} priced plays -> {a.out}")
     return 0
 
