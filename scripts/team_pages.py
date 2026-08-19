@@ -70,30 +70,52 @@ PTS_PER_RATING = 39.18
 # `direction` is 'high', 'low', or 'style'. A style metric has no better end -
 # a pass-leaning offense is not a good one - so it gets a value and no
 # percentile bar. A bar would assert a direction that does not exist.
-# label, column, weight column, direction, source table, stability key.
-# The stability figure is NOT hard-coded any more: it is looked up from
-# mart.metric_stability so the number beside a metric is the one currently
-# measured. Hard-coding it meant the page kept quoting an old run.
+# label, column, weight column, direction, source, stability key, group.
+# Sources: g = mart.team_game, p = mart.team_pressure, c = mart.team_charting.
+# The stability figure is looked up from mart.metric_stability rather than
+# hard-coded, so the number beside a metric is the one currently measured.
+# "style" metrics have no better end and carry no percentile bar: a team is not
+# better for motioning more, it is only different.
 METRICS = [
     ("off EPA/play", "off_epa_play_neutral", "off_plays_neutral", "high",
-     "g", "off EPA/play"),
+     "g", "off EPA/play", "Offense"),
     ("off success rate", "off_success", "off_plays", "high",
-     "g", "off success rate"),
+     "g", "off success rate", "Offense"),
     ("explosive rate", "off_explosive_rate", "off_plays", "high",
-     "g", "off explosive rate"),
+     "g", "off explosive rate", "Offense"),
     ("pressure allowed", "pressure_rate_allowed", "dropbacks", "low",
-     "p", "pressure allowed"),
+     "p", "pressure allowed", "Offense"),
     ("def EPA/play", "def_epa_play_neutral", "def_plays_neutral", "low",
-     "g", "def EPA/play"),
+     "g", "def EPA/play", "Defense"),
     ("def success rate", "def_success", "def_plays", "low",
-     "g", "def success rate"),
+     "g", "def success rate", "Defense"),
+    ("def explosive rate", "def_explosive_rate", "def_plays", "low",
+     "g", "def explosive rate", "Defense"),
     ("pressure generated", "pressure_rate_made", "pass_snaps_faced", "high",
-     "p", "pressure generated"),
+     "p", "pressure generated", "Defense"),
     ("pass rate over exp", "off_proe_neutral", "off_plays_neutral", "style",
-     "g", "PROE"),
+     "g", "PROE", "Tendencies"),
     ("sec per play", "off_sec_per_play_neutral", "off_plays_neutral", "style",
-     "g", "pace sec/play"),
+     "g", "pace sec/play", "Tendencies"),
+    ("play action", "play_action_rate", "plays", "style",
+     "c", "play action rate", "Tendencies"),
+    ("motion", "motion_rate", "plays", "style",
+     "c", "motion rate", "Tendencies"),
+    ("shotgun", "shotgun_rate", "plays", "style",
+     "c", "shotgun rate", "Tendencies"),
+    ("screens", "screen_rate", "plays", "style",
+     "c", "screen rate", "Tendencies"),
+    ("RPO", "rpo_rate", "plays", "style",
+     "c", "RPO rate", "Tendencies"),
+    ("blitzers sent", "blitz_sent", "plays", "style",
+     "c", "blitzers sent", "Tendencies"),
+    ("man coverage", "man_rate", "coverage_charted", "style",
+     "c", "man coverage rate", "Tendencies"),
 ]
+
+SRC_TABLE = {"g": "mart.team_game", "p": "mart.team_pressure",
+             "c": "mart.team_charting"}
+SRC_GATE = {"g": "AND game_type = 'REG'", "p": "AND native = 1", "c": ""}
 
 
 def e(s) -> str:
@@ -219,44 +241,6 @@ def fetch(con):
             if wk == 1:
                 d["games"][me] = row
 
-    # Charting tendencies, ranked WITHIN the season. Levels are not comparable
-    # across seasons (the league man rate swings 29->49->31 on identical
-    # charted volume), but a rank inside one season is sound.
-    d["chart"] = {}
-    try:
-        rows = con.execute("""
-            WITH s AS (
-                SELECT team,
-                       avg(play_action_rate) AS pa, avg(screen_rate) AS scr,
-                       avg(rpo_rate) AS rpo, avg(motion_rate) AS mot,
-                       avg(no_huddle_rate) AS nh, avg(shotgun_rate) AS sg,
-                       avg(blitz_sent) AS blz, avg(man_rate) AS man,
-                       sum(plays) AS n
-                FROM mart.team_charting
-                WHERE season = (SELECT max(season) FROM mart.team_charting)
-                GROUP BY team
-            )
-            SELECT team, pa, scr, rpo, mot, nh, sg, blz, man, n,
-                   rank() OVER (ORDER BY pa DESC)  AS r_pa,
-                   rank() OVER (ORDER BY scr DESC) AS r_scr,
-                   rank() OVER (ORDER BY rpo DESC) AS r_rpo,
-                   rank() OVER (ORDER BY mot DESC) AS r_mot,
-                   rank() OVER (ORDER BY nh DESC)  AS r_nh,
-                   rank() OVER (ORDER BY sg DESC)  AS r_sg,
-                   rank() OVER (ORDER BY blz DESC) AS r_blz,
-                   rank() OVER (ORDER BY man DESC) AS r_man
-            FROM s
-        """).fetchall()
-        keys = ["team", "pa", "scr", "rpo", "mot", "nh", "sg", "blz", "man",
-                "n", "r_pa", "r_scr", "r_rpo", "r_mot", "r_nh", "r_sg",
-                "r_blz", "r_man"]
-        for r in rows:
-            d["chart"][r[0]] = dict(zip(keys, r))
-        d["chart_season"] = con.execute(
-            "SELECT max(season) FROM mart.team_charting").fetchone()[0]
-    except Exception:
-        d["chart_season"] = None
-
     d["players"] = {}
     # Charting is joined on gsis_id from the most recent charted season. It is
     # last season's usage sitting beside a projection, so the header says so.
@@ -335,15 +319,15 @@ def fetch(con):
     # an unweighted mean of per-game rates lets a two-snap game count as much
     # as a fifty-snap one, which is the error that put a 3-14 team at +0.170.
     d["metrics"] = {}
+    d["mweeks"] = {}
     d["stab"] = {}
     try:
         d["stab"] = dict(con.execute(
             "SELECT metric, n8 FROM mart.metric_stability").fetchall())
     except Exception:
         pass
-    for label, col, wcol, _dir, src, _sk in METRICS:
-        tbl = ("mart.team_game" if src == "g" else "mart.team_pressure")
-        gate = ("AND game_type = 'REG'" if src == "g" else "AND native = 1")
+    for label, col, wcol, _dir, src, _sk, _grp in METRICS:
+        tbl, gate = SRC_TABLE[src], SRC_GATE[src]
         try:
             d["metrics"][label] = dict(con.execute(f"""
                 SELECT team, sum({col} * {wcol}) / nullif(sum({wcol}), 0)
@@ -351,8 +335,18 @@ def fetch(con):
                 WHERE season = ? {gate} AND {col} IS NOT NULL
                 GROUP BY 1
             """, [HIST]).fetchall())
+            # week by week, for the sparkline
+            wk = {}
+            for team, week, v in con.execute(f"""
+                SELECT team, week, {col} FROM {tbl}
+                WHERE season = ? {gate} AND {col} IS NOT NULL
+                ORDER BY team, week
+            """, [HIST]).fetchall():
+                wk.setdefault(team, []).append(v)
+            d["mweeks"][label] = wk
         except Exception:
             d["metrics"][label] = {}
+            d["mweeks"][label] = {}
     return d
 
 
@@ -376,49 +370,6 @@ def mz(share, n):
     if share is None or not n or n < 20:
         return '<span class="na">--</span>'
     return f"{share * 100:.0f}%"
-
-
-
-CHART_ROWS = [
-    ("pa",  "r_pa",  "play action",   "share of dropbacks with play action"),
-    ("sg",  "r_sg",  "shotgun",       "share of dropbacks from shotgun"),
-    ("mot", "r_mot", "motion",        "share of plays with pre-snap motion"),
-    ("rpo", "r_rpo", "RPO",           "run-pass option share of plays"),
-    ("scr", "r_scr", "screens",       "share of dropbacks that are screens"),
-    ("nh",  "r_nh",  "no huddle",     "share of plays run without a huddle"),
-    ("blz", "r_blz", "blitzers sent", "average extra rushers this defense sends"),
-    ("man", "r_man", "man coverage",  "share of charted dropbacks in man"),
-]
-
-
-def charting_block(c, season):
-    """Coordinator tendencies as within-season ranks.
-
-    A rank rather than a level because the league man rate swings twenty points
-    between seasons on identical charted volume, which is a charting revision
-    rather than a change in football. Ranks inside one season are sound.
-    """
-    if not c:
-        return '<p class="empty">No charting data for this club.</p>'
-    out = ""
-    for key, rkey, label, why in CHART_ROWS:
-        v, rk = c.get(key), c.get(rkey)
-        if v is None or rk is None:
-            continue
-        # rank 1 is the most of a thing; the bar fills from the league bottom
-        pct = round((33 - rk) / 32 * 100)
-        val = f"{v:.2f}" if key == "blz" else f"{v * 100:.0f}%"
-        out += (f'<div class="crow" title="{e(why)}">'
-                f'<div class="cl">{e(label)}</div>'
-                f'<div class="cb"><i style="width:{pct}%"></i></div>'
-                f'<div class="cv">{val}</div>'
-                f'<div class="cr">{rk}</div></div>')
-    return (f'<div class="chart-note">Coordinator tendencies, {season}. '
-            f'Bar is rank among 32, not a level. These are the most stable '
-            f'numbers on the page (no huddle 0.91, motion 0.87 season to '
-            f'season, against 0.55 for offensive EPA) because they carry '
-            f'intent, not performance. They say what a team likes to do, not '
-            f'how good it is.</div><div class="ctable">{out}</div>')
 
 
 
@@ -501,15 +452,32 @@ def stat(label, value, sub=""):
             + (f'<div class="sb">{sub}</div>' if sub else "") + "</div>")
 
 
-def metric_rows(t, d):
-    """(label, value, percentile, rank, dp, r) for one team.
+def spark(vals, lo, hi, w=64, h=15):
+    """A week-by-week trace, scaled to the LEAGUE range for that metric.
 
-    Percentile is direction-corrected so a full bar always means 'best in the
-    league'. Style metrics get None, which renders no bar at all.
+    Scaling to the team's own range would make every team look equally
+    volatile, which is the opposite of what the trace is for.
+    """
+    if not vals or len(vals) < 3 or hi <= lo:
+        return ""
+    n = len(vals)
+    pts = " ".join(
+        f"{i / (n - 1) * w:.1f},"
+        f"{h - (max(lo, min(hi, v)) - lo) / (hi - lo) * h:.1f}"
+        for i, v in enumerate(vals))
+    return (f'<svg class="spk" viewBox="0 0 {w} {h}" width="{w}" height="{h}" '
+            f'aria-hidden="true"><polyline points="{pts}"/></svg>')
+
+
+def metric_rows(t, d, opp=None):
+    """One row per metric: trend, own value, rank, and the opponent's.
+
+    Percentile is direction-corrected so a full bar always means best in the
+    league. Style metrics get None, which renders no bar: a team is not better
+    for motioning more, only different.
     """
     out = []
-    for label, _col, _w, direction, _src, skey in METRICS:
-        r = d["stab"].get(skey)
+    for label, _col, _w, direction, src, skey, group in METRICS:
         vals = d["metrics"].get(label, {})
         v = vals.get(t)
         if v is None:
@@ -523,9 +491,66 @@ def metric_rows(t, d):
                         if (x < v if direction == "high" else x > v))
             pct = worse / (n - 1) if n > 1 else 0.5
             rank = sorted(others, reverse=(direction == "high")).index(v) + 1
-        dp = 1 if "sec" in label else (3 if "EPA" in label else 3)
-        out.append((label, v, pct, rank, dp, r))
+
+        ov = vals.get(opp) if opp else None
+        orank = None
+        if ov is not None and direction != "style":
+            orank = sorted(others, reverse=(direction == "high")).index(ov) + 1
+
+        wk = (d["mweeks"].get(label) or {}).get(t) or []
+        flat = [x for team_vals in (d["mweeks"].get(label) or {}).values()
+                for x in team_vals]
+        if flat:
+            flat = sorted(flat)
+            lo, hi = flat[int(.05 * (len(flat) - 1))], flat[int(.95 * (len(flat) - 1))]
+        else:
+            lo = hi = 0
+        # Format by SOURCE, not by matching words in the label. Matching on
+        # "rate" caught pass rate over expected, which is already in
+        # percentage POINTS, and printed +3.45 as 345%.
+        dp = 1 if ("sec" in label or "blitz" in label
+                   or label == "pass rate over exp") else 3
+        pctv = src == "c" and label != "blitzers sent"
+        out.append({"label": label, "group": group, "v": v, "pct": pct,
+                    "rank": rank, "dp": dp, "r": d["stab"].get(skey),
+                    "spark": spark(wk, lo, hi), "ov": ov, "orank": orank,
+                    "aspct": pctv})
     return out
+
+
+def metric_table(rows, opp):
+    """The applied metrics section. Full width, because a matchup column and a
+    trend do not fit in a 330px card."""
+    if not rows:
+        return '<p class="empty">No metrics available.</p>'
+    head = (f'<div class="mh"><span></span><span>trend</span><span>2025</span>'
+            f'<span>rk</span><span></span>'
+            f'<span class="oc">{e(opp) if opp else ""}</span>'
+            f'<span class="oc">rk</span></div>')
+    out, seen = "", None
+    for r in rows:
+        if r["group"] != seen:
+            seen = r["group"]
+            out += f'<div class="mgrp">{e(seen)}</div>'
+        p = max(0.0, min(1.0, r["pct"] if r["pct"] is not None else 0.0))
+        bar = (f'<span class="mb"><i style="width:{p * 100:.1f}%"></i></span>'
+               if r["pct"] is not None else '<span class="mb none"></span>')
+        fmt = (lambda x: f"{x * 100:.0f}%") if r["aspct"] else (
+            lambda x: num(x, r["dp"]))
+        out += (
+            f'<div class="mrow"><span class="ml">{e(r["label"])}'
+            f'<em title="year-over-year stability, measured not assumed">'
+            f'r{("%.2f" % r["r"])[1:] if r["r"] is not None else "--"}</em>'
+            f'</span>'
+            f'<span class="msp">{r["spark"]}</span>'
+            f'<span class="mv">{fmt(r["v"]) if r["v"] is not None else "--"}</span>'
+            f'<span class="mr">{("#%s" % r["rank"]) if r["rank"] else ""}</span>'
+            f'{bar}'
+            f'<span class="mv oc">'
+            f'{fmt(r["ov"]) if r["ov"] is not None else "--"}</span>'
+            f'<span class="mr oc">'
+            f'{("#%s" % r["orank"]) if r["orank"] else ""}</span></div>')
+    return f'<div class="mtable">{head}{out}</div>'
 
 
 def render_team(t, d, ranks, open_=False):
@@ -606,8 +631,9 @@ def render_team(t, d, ranks, open_=False):
     stable = sched_strip(d["sched"].get(t) or [], d["teams"],
                          ranks, pts)
 
-    charting = charting_block(d["chart"].get(t),
-                              d.get("chart_season") or "")
+    opp1 = (d["games"].get(t) or {}).get("opp")
+    mtable = metric_table(metric_rows(t, d, opp1), opp1)
+    profile_note = ('<div class="sb">Season shape above; the measured metrics are in the Metrics section below.</div>')
 
     dm = d["drives"].get(t)
     drive = (TV.drive_mix(dm["td"], dm["fg"], dm["dn"], dm["to"])
@@ -682,9 +708,7 @@ def render_team(t, d, ranks, open_=False):
  <div class="two">
   <div class="card">
    <div class="lb">{HIST} profile &middot; percentile in the league</div>
-   {TV.metric_strip(metric_rows(t, d))}
-   <div class="sb">r is the metric&rsquo;s own year-over-year stability.
-    Style metrics have no better end, so they carry no bar.</div>
+   {profile_note}
   </div>
   <div class="card">
    <div class="lb">{HIST} drive outcomes</div>
@@ -706,8 +730,13 @@ def render_team(t, d, ranks, open_=False):
  <div class="note">{e(tm.get("note") or "")}</div>
  <div class="lb sec">People</div>
  {ptable}
- <div class="lb sec">Tendencies</div>
- {charting}
+ <div class="lb sec">Metrics</div>
+ {mtable}
+ <div class="note sb">Each row carries <b>r</b>, its own measured
+  year-over-year stability, because motion at 0.87 and defensive EPA at 0.37
+  are not the same kind of number. Tendencies have no better end so they carry
+  no bar. The right-hand column is week 1&rsquo;s opponent. None of these beat
+  the closing spread, so this explains a line rather than beating one.</div>
  <div class="lb sec">{SEASON} schedule</div>
  {stable}
  <div class="lb sec">Season log</div>
@@ -808,18 +837,38 @@ LEDGER_CSS = """
 .ledger table.pl .sep{border-left:1px solid var(--line)}
 .ledger .pnote{padding:6px 16px 0;font-size:10.5px;color:var(--ink3);
   max-width:72ch;line-height:1.5}
-.ledger .chart-note{padding:8px 16px 2px;font-size:11px;color:var(--ink3);
-  max-width:74ch;line-height:1.5}
-.ledger .ctable{padding:6px 16px 2px;display:flex;flex-direction:column;gap:4px}
-.ledger .crow{display:grid;grid-template-columns:104px minmax(0,1fr) 46px 34px;
-  align-items:center;gap:9px;font-size:11.5px}
-.ledger .crow .cl{color:var(--ink2)}
-.ledger .crow .cb{height:9px;background:var(--row);border:1px solid var(--line)}
-.ledger .crow .cb i{display:block;height:100%;background:var(--accent)}
-.ledger .crow .cv{text-align:right;font-weight:700;
+/* Applied metrics. Full width because a trend and a matchup column do not
+   fit a 330px card. Grid columns, so every row lines up without a table. */
+.ledger .mtable{margin:8px 16px 0}
+.ledger .mh,.ledger .mrow{display:grid;
+  grid-template-columns:150px 66px 58px 30px minmax(56px,1fr) 58px 30px;
+  align-items:center;gap:9px}
+.ledger .mh{font-size:9px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--ink3);padding-bottom:5px;border-bottom:1px solid var(--rule)}
+.ledger .mh span,.ledger .mrow .mv,.ledger .mrow .mr{text-align:right}
+.ledger .mh span:first-child{text-align:left}
+.ledger .mgrp{font-size:9px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--ink3);padding:10px 0 3px}
+.ledger .mrow{padding:2px 0;font-size:11.5px;
+  border-bottom:1px solid var(--line)}
+.ledger .mrow:last-child{border-bottom:0}
+.ledger .mrow .ml{color:var(--ink2);text-align:left;display:flex;
+  align-items:baseline;gap:6px}
+.ledger .mrow .ml em{font-style:normal;font-size:9px;color:var(--ink3);
+  letter-spacing:.04em}
+.ledger .mrow .mv{font-weight:700;font-variant-numeric:tabular-nums}
+.ledger .mrow .mr{color:var(--ink3);font-size:10px;
   font-variant-numeric:tabular-nums}
-.ledger .crow .cr{text-align:right;color:var(--ink3);font-size:10px;
-  font-variant-numeric:tabular-nums}
+.ledger .mrow .mb{height:8px;background:var(--row);display:block}
+.ledger .mrow .mb.none{background:transparent}
+.ledger .mrow .mb i{display:block;height:100%;background:var(--accent)}
+.ledger .msp{display:flex;align-items:center;height:15px}
+.ledger svg.spk{overflow:visible}
+.ledger svg.spk polyline{fill:none;stroke:var(--ink3);stroke-width:1.2;
+  stroke-linejoin:round;vector-effect:non-scaling-stroke}
+/* the opponent columns are secondary: same data, quieter */
+.ledger .oc{color:var(--ink3)}
+.ledger .mrow .mv.oc{font-weight:400}
 
 /* Season strength strip, PORTRAIT. One week per row, bar diverging from a
    centre rule. The landscape version sized bars as a percentage of the box but
