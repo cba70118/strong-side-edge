@@ -393,9 +393,11 @@ def render_team(t, d, ranks, open_=False):
         # beside two narrow integer columns.
         srows += (f'<tr><td class="n wk">{s["week"]}</td>'
                   f'<td class="ps at">{e(s["at"])}</td>'
-                  f'<td class="nm opp"><span class="lg lg-{e(s["opp"])}"></span>'
+                  f'<td class="nm opp"><span class="ow">'
+                  f'<span class="lg lg-{e(s["opp"])}"></span>'
                   f'<b>{e(s["opp"])}</b>'
-                  f'<span class="oname">{e(o.get("name") or "")}</span></td>'
+                  f'<span class="oname">{e(o.get("name") or "")}</span>'
+                  f'</span></td>'
                   f'<td class="n">{pts(o.get("blended"))}</td>'
                   f'<td class="n rk">{ranks["net"].get(s["opp"]) or "--"}</td>'
                   f'</tr>')
@@ -605,8 +607,13 @@ LEDGER_CSS = """
 .ledger table.sch .at{width:36px;color:var(--ink3)}
 .ledger table.sch .rk{width:54px}
 .ledger table.sch th:nth-child(4),.ledger table.sch td:nth-child(4){width:96px}
-.ledger table.sch td.opp{display:flex;align-items:center;gap:7px;
-  white-space:nowrap;overflow:hidden}
+/* NEVER display:flex on a td. It removes the cell from the table
+   formatting context, so it stops sizing with its column and the row drifts
+   out of line with the header - which is exactly how this table broke. Flex
+   an inner wrapper instead and leave the cell alone. */
+.ledger table.sch td.opp{white-space:nowrap;overflow:hidden}
+.ledger table.sch td.opp .ow{display:flex;align-items:center;gap:7px;
+  overflow:hidden}
 .ledger table.sch td.opp .lg{width:16px;height:16px;flex:0 0 16px}
 .ledger table.sch .oname{color:var(--ink3);font-weight:400;font-size:11px;
   overflow:hidden;text-overflow:ellipsis}
