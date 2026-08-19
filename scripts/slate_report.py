@@ -107,6 +107,21 @@ def tm(team, nick=None):
 
 CSS = DS.css() + """
 .mast .sub{margin-top:4px}
+.chips{display:flex;flex-wrap:wrap;gap:7px;margin:14px 0 4px}
+h4.nh{margin:22px 0 0;font-family:'IBM Plex Sans Condensed',sans-serif;
+  font-size:17px;font-weight:700;text-transform:uppercase;letter-spacing:.01em}
+.ist{font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;
+  padding:2px 7px;border:1px solid currentColor;white-space:nowrap}
+.is-o{color:var(--neg)} .is-d{color:var(--warn)}
+.is-i{color:var(--neg)} .is-s{color:var(--warn)}
+.is-q{color:var(--ink3)}
+ol.log.news{list-style:none;margin:10px 0 0;padding:0;display:flex;
+  flex-direction:column;gap:0}
+ol.log.news li{border-left:3px solid var(--line);padding:0 0 14px 14px}
+ol.log.news .when{font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--ink3)}
+ol.log.news .hd{font-weight:600;margin-top:3px;font-size:14px}
+ol.log.news p{margin:3px 0 0;color:var(--ink2);font-size:12.5px;max-width:78ch}
 .posfilter{display:flex;gap:0;margin:14px 0 0;width:fit-content;
   border:1px solid var(--line)}
 .posfilter button{font:inherit;font-size:10px;letter-spacing:.14em;
@@ -117,7 +132,19 @@ CSS = DS.css() + """
 .posfilter button[aria-pressed="true"]{background:var(--ink);color:var(--panel)}
 .posfilter button:hover{color:var(--ink)}
 .posfilter button[aria-pressed="true"]:hover{color:var(--panel)}
-.posfilter .ct{margin-left:7px;font-weight:400;letter-spacing:0;opacity:.7}
+.posfilter .s-hi{font-weight:700}
+.s-mid{color:var(--ink2)} .s-lo{color:var(--ink3)}
+tr.grp td{font-size:10px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--ink3);padding-top:14px;border-bottom:1px solid var(--line)}
+.vd{font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;
+  padding:2px 7px;border:1px solid currentColor;white-space:nowrap}
+.v-fast{color:var(--pos)} .v-slow{color:var(--warn)}
+.v-weak{color:var(--ink3)} .v-noise{color:var(--neg)}
+.v-noedge{color:var(--ink3)} .v-withinnoise{color:var(--warn)}
+.v-candidate{color:var(--pos)} .v-wrongsign{color:var(--neg)}
+.dim{color:var(--ink3)}
+.gm{color:var(--ink3)} .rate{color:var(--ink2)}
+.ct{margin-left:7px;font-weight:400;letter-spacing:0;opacity:.7}
 /* LAST SEASON vs PROJECTION. The two column groups get their own spanning
    header and different weights - the panel previously gave the reader no way
    to tell which numbers were history and which were output. */
@@ -337,22 +364,35 @@ JS_THEME = "<script>" + DS.TOGGLE_JS + "</script>"
 JS_POS = r"""<script>
 (function(){
   var wrap=document.querySelector('.posfilter'); if(!wrap) return;
+  var tbl=document.querySelector('table.pseason'); if(!tbl) return;
   var btns=[].slice.call(wrap.querySelectorAll('button'));
-  var rows=[].slice.call(document.querySelectorAll('table.pseason tbody tr'));
-  btns.forEach(function(b){
-    b.addEventListener('click',function(){
-      var pos=b.dataset.pos;
-      btns.forEach(function(x){x.setAttribute('aria-pressed',String(x===b));});
-      var i=0;
-      rows.forEach(function(r){
-        var on = (pos==='ALL') || (r.dataset.pos===pos);
-        r.hidden = !on;
-        /* Renumber the visible rows. A rank of 41 at the top of a filtered
-           list is a rank in a list the reader is not looking at. */
-        if(on){ i++; r.cells[0].textContent = i; }
+  var rows=[].slice.call(tbl.querySelectorAll('tbody tr'));
+  /* Which column group each position cares about. A QB and an RB share no
+     primary stat, so showing every column for everyone leaves the table two
+     thirds empty. */
+  var SHOW={QB:'cpass', WR:'crec', TE:'crec', RB:'crush', ALL:'crec'};
+  function apply(pos){
+    var keep=SHOW[pos]||'crec';
+    ['cpass','crec','crush'].forEach(function(cls){
+      var on=(cls===keep);
+      [].forEach.call(tbl.querySelectorAll('.'+cls),function(cell){
+        cell.style.display = on ? '' : 'none';
       });
     });
+    var i=0;
+    rows.forEach(function(r){
+      var on = (pos==='ALL') || (r.dataset.pos===pos);
+      r.hidden = !on;
+      if(on){ i++; r.cells[0].textContent = i; }
+    });
+  }
+  btns.forEach(function(b){
+    b.addEventListener('click',function(){
+      btns.forEach(function(x){x.setAttribute('aria-pressed',String(x===b));});
+      apply(b.dataset.pos);
+    });
   });
+  apply('ALL');
 })();
 </script>"""
 
@@ -1146,32 +1186,29 @@ built or played yet. Nothing on this page is back-filled.</p>'''
 
 
 def panel_player_season(con, season):
-    """Season-long projections: filterable, with last season and the projection
-    visually separated.
+    """Season projections: QBs, skill players, touchdowns, per-stat bands.
 
-    TWO THINGS THIS PANEL HAD TO FIX. It was not clear which columns were
-    history and which were the projection - so the two groups now sit under
-    their own spanning headers, and last season's columns are recessive because
-    they are context rather than output. And it was one undifferentiated list of
-    267 players, so it filters by position.
-
-    QUARTERBACKS ARE ABSENT and the panel says so. There is no passing
-    projection in this warehouse - mart.player_projection_pre covers WR, TE and
-    RB only - so a QB filter would return an empty table and imply the data
-    exists somewhere.
+    The position filter drives COLUMN visibility as well as rows, because a
+    quarterback and a running back share no primary stat and one table showing
+    every column for everyone would be two thirds empty.
     """
     if con is None:
         return '<p class="lede">Season projections need a database connection.</p>'
     try:
         rows = con.execute("""
-            SELECT display_name, team, position, pr_games, pr_targets, pr_yards,
-                   pr_carries, pr_rush_yards,
+            SELECT display_name, team, position, pr_games,
+                   pr_targets, pr_yards, pr_rec_tds, pr_carries, pr_rush_yards,
+                   pr_attempts, pr_pass_yards, pr_pass_tds, pr_ints,
                    proj_targets, proj_rec_yards, p10_rec_yards, p90_rec_yards,
-                   proj_carries, proj_rush_yards, p10_rush_yards,
-                   p90_rush_yards, availability_flag
-            FROM mart.player_season_projection
-            WHERE season = ?
-            ORDER BY coalesce(proj_rec_yards,0) + coalesce(proj_rush_yards,0) DESC
+                   proj_rec_tds, p10_rec_tds, p90_rec_tds,
+                   proj_carries, proj_rush_yards, p10_rush_yards, p90_rush_yards,
+                   proj_pass_yards, p10_pass_yards, p90_pass_yards,
+                   proj_pass_tds, p10_pass_tds, p90_pass_tds,
+                   availability_flag, proj_games, proj_games_rush
+            FROM mart.player_season_projection WHERE season = ?
+            ORDER BY coalesce(proj_pass_yards, 0) * 0.35
+                   + coalesce(proj_rec_yards, 0)
+                   + coalesce(proj_rush_yards, 0) DESC
         """, [season]).fetchall()
     except Exception:
         return ('<p class="lede">No season projections built yet &mdash; run '
@@ -1179,33 +1216,76 @@ def panel_player_season(con, season):
     if not rows:
         return '<p class="lede">No season projections for this season.</p>'
 
-    def cell(v, dp=0):
+    def c(v, dp=0):
         if v is None or v == 0:
             return "&mdash;"
         return f"{v:,.{dp}f}"
 
+    def per(v, g):
+        """Per-game rate. The comparable number when the totals sit on
+        different games counts."""
+        if not v or not g:
+            return 0
+        return v / g
+
+    def band(lo, hi, dp=0):
+        if lo is None or hi is None or (lo == 0 and hi == 0):
+            return "&mdash;"
+        return f"{lo:,.{dp}f}&ndash;{hi:,.{dp}f}"
+
     body = ""
     for i, r in enumerate(rows):
-        flag = f'<em class="tag warn">{r[3]} gm</em>' if r[16] else ""
+        (nm, tm, pos, prg, prtg, pry, prrtd, prc, prry,
+         prat, prpy, prptd, prints,
+         ptg, pry2, p10y, p90y, prtd2, p10td, p90td,
+         pc, prush, p10r, p90r,
+         ppy, p10py, p90py, pptd, p10ptd, p90ptd, flag, pgm, rgm) = r
+        f = f'<em class="tag warn">{prg} gm</em>' if flag else ""
         body += (
-            f'<tr data-pos="{e(r[2])}">'
+            f'<tr data-pos="{e(pos)}">'
             f'<td class="n" data-v="{i + 1}">{i + 1}</td>'
-            f'<td class="nm" data-v="{e(r[0])}">{e(r[0])}{flag}</td>'
-            f'<td class="ps" data-v="{e(r[1])}">{e(r[1])}</td>'
-            f'<td class="ps pos" data-v="{e(r[2])}">{e(r[2])}</td>'
-            f'<td class="n was" data-v="{r[3] or 0}">{cell(r[3])}</td>'
-            f'<td class="n was" data-v="{r[4] or 0}">{cell(r[4])}</td>'
-            f'<td class="n was" data-v="{r[5] or 0}">{cell(r[5])}</td>'
-            f'<td class="n was" data-v="{r[7] or 0}">{cell(r[7])}</td>'
-            f'<td class="n proj" data-v="{r[8] or 0}">{cell(r[8], 1)}</td>'
-            f'<td class="n proj strong" data-v="{r[9] or 0}">{cell(r[9])}</td>'
-            # the band sorts on its LOW end - sorting a range needs one number
-            f'<td class="n band" data-v="{r[10] or 0}">'
-            f'{cell(r[10])}&ndash;{cell(r[11])}</td>'
-            f'<td class="n proj" data-v="{r[12] or 0}">{cell(r[12], 1)}</td>'
-            f'<td class="n proj strong" data-v="{r[13] or 0}">{cell(r[13])}</td>'
-            f'<td class="n band" data-v="{r[14] or 0}">'
-            f'{cell(r[14])}&ndash;{cell(r[15])}</td>'
+            f'<td class="nm" data-v="{e(nm)}">{e(nm)}{f}</td>'
+            f'<td class="ps" data-v="{e(tm)}">{e(tm)}</td>'
+            f'<td class="ps pos" data-v="{e(pos)}">{e(pos)}</td>'
+            f'<td class="n was" data-v="{prg or 0}">{c(prg)}</td>'
+            # --- passing, QB only
+            f'<td class="n was cpass" data-v="{prat or 0}">{c(prat)}</td>'
+            f'<td class="n was cpass" data-v="{prpy or 0}">{c(prpy)}</td>'
+            f'<td class="n was cpass" data-v="{prptd or 0}">{c(prptd)}</td>'
+            f'<td class="n was cpass" data-v="{prints or 0}">{c(prints)}</td>'
+            f'<td class="n gm cpass" data-v="{pgm or 0}">{c(pgm, 1)}</td>'
+            f'<td class="n proj strong cpass" data-v="{ppy or 0}">{c(ppy)}</td>'
+            f'<td class="n proj rate cpass" data-v="{per(ppy, pgm)}">'
+            f'{c(per(ppy, pgm), 1)}</td>'
+            f'<td class="n band cpass" data-v="{p10py or 0}">'
+            f'{band(p10py, p90py)}</td>'
+            f'<td class="n proj strong cpass" data-v="{pptd or 0}">{c(pptd, 1)}</td>'
+            f'<td class="n band cpass" data-v="{p10ptd or 0}">'
+            f'{band(p10ptd, p90ptd, 1)}</td>'
+            # --- receiving
+            f'<td class="n was crec" data-v="{prtg or 0}">{c(prtg)}</td>'
+            f'<td class="n was crec" data-v="{pry or 0}">{c(pry)}</td>'
+            f'<td class="n was crec" data-v="{prrtd or 0}">{c(prrtd)}</td>'
+            f'<td class="n proj crec" data-v="{ptg or 0}">{c(ptg, 1)}</td>'
+            f'<td class="n gm crec" data-v="{pgm or 0}">{c(pgm, 1)}</td>'
+            f'<td class="n proj strong crec" data-v="{pry2 or 0}">{c(pry2)}</td>'
+            f'<td class="n proj rate crec" data-v="{per(pry2, pgm)}">'
+            f'{c(per(pry2, pgm), 1)}</td>'
+            f'<td class="n band crec" data-v="{p10y or 0}">'
+            f'{band(p10y, p90y)}</td>'
+            f'<td class="n proj strong crec" data-v="{prtd2 or 0}">{c(prtd2, 1)}</td>'
+            f'<td class="n band crec" data-v="{p10td or 0}">'
+            f'{band(p10td, p90td, 1)}</td>'
+            # --- rushing
+            f'<td class="n was crush" data-v="{prc or 0}">{c(prc)}</td>'
+            f'<td class="n was crush" data-v="{prry or 0}">{c(prry)}</td>'
+            f'<td class="n proj crush" data-v="{pc or 0}">{c(pc, 1)}</td>'
+            f'<td class="n gm crush" data-v="{rgm or 0}">{c(rgm, 1)}</td>'
+            f'<td class="n proj strong crush" data-v="{prush or 0}">{c(prush)}</td>'
+            f'<td class="n proj rate crush" data-v="{per(prush, rgm)}">'
+            f'{c(per(prush, rgm), 1)}</td>'
+            f'<td class="n band crush" data-v="{p10r or 0}">'
+            f'{band(p10r, p90r)}</td>'
             f'</tr>')
 
     counts = {}
@@ -1213,48 +1293,280 @@ def panel_player_season(con, season):
         counts[r[2]] = counts.get(r[2], 0) + 1
     btns = ('<button data-pos="ALL" aria-pressed="true">All'
             f'<span class="ct">{len(rows)}</span></button>')
-    for pos in ("WR", "RB", "TE"):
+    for pos in ("QB", "WR", "RB", "TE"):
         if counts.get(pos):
             btns += (f'<button data-pos="{pos}" aria-pressed="false">{pos}'
                      f'<span class="ct">{counts[pos]}</span></button>')
-    n_flag = sum(1 for r in rows if r[16])
+    n_flag = sum(1 for r in rows if r[30])
+    qb_gm = next((r[31] for r in rows if r[2] == "QB" and r[31]), 14.31)
 
-    return f'''<p class="lede"><b>A projection, not an edge.</b> Receiving beats
-last season&rsquo;s actual total by <b>14.6%</b> on out-of-sample MAE (220.0
-against 257.6 over 409 player-seasons, fit on 2021&ndash;22 and scored on
-2023&ndash;25) and is close to unbiased. Rushing clears the same test by only
-<b>8.1%</b> and under-projects by 91 yards, so it carries a wider band of its
-own. Neither is tested against a market: there is no season-long player line in
-this warehouse and no ADP source.</p>
-<p class="lede" style="margin-top:11px"><b>The band is measured.</b> p10 and p90
-are the empirical percentiles of actual/projected on those out-of-sample rows
-&mdash; 0.34&times;&ndash;1.77&times; for receiving, 0.12&times;&ndash;2.36&times;
-for rushing. A 1,000-yard receiving projection honestly spans 340&ndash;1,770.
-The width is the finding, not a defect. Availability is flagged on the {n_flag}
-players who played 11 games or fewer last season, and deliberately not modeled.
-<b>No quarterbacks:</b> there is no passing projection in the warehouse, so QBs
-are absent rather than shown empty.</p>
+    return f'''<p class="lede"><b>These are totals over {qb_gm:.1f} games, not
+over 17.</b> That is the single biggest reason a projection sits below the same
+player&rsquo;s 2025 line. Quarterbacks who threw 200 or more attempts went on to
+play a mean of <b>12.8</b> games the following season, and only <b>25.4%</b>
+played all 17. A projection built on a full season would be biased high on
+everyone, so the totals carry the availability discount and the <b>gm</b> column
+states it. The <b>yd/gm</b> column is the like-for-like number: multiply it by
+whatever games count you believe in.</p>
+<p class="lede" style="margin-top:11px">A per-player games forecast was tested
+and <b>rejected</b>. Games played carries year over year at only <b>+0.097</b>,
+and using last season&rsquo;s games directly was <b>14.5% worse</b> on holdout
+error than the flat constant. Availability is close to unforecastable at this
+grain, so it is applied as a population rate, not a personal one. {n_flag}
+players who played 11 games or fewer are flagged rather than modeled.</p>
+<p class="lede" style="margin-top:11px"><b>Projections, not edges.</b> Each stat
+was backtested the same way, fit on 2021&ndash;22 and scored on 2023&ndash;25,
+against simply reusing last season&rsquo;s total. QB passing yards beat that by
+<b>13.8%</b>, QB passing TDs by <b>17.2%</b>, receiving TDs by <b>13.2%</b>,
+receiving yards by <b>9.6%</b>. None of it is tested against a market: no
+season-long player line exists in either feed, and there is no ADP source
+here.</p>
+<p class="lede" style="margin-top:11px"><b>Every band is its own.</b> p10 and
+p90 are that stat&rsquo;s measured out-of-sample spread, and they differ far too
+much to share: QB passing yards 0.57&ndash;1.31&times;, QB passing TDs
+0.50&ndash;1.51&times;, receiving yards 0.64&ndash;1.52&times;, and receiving
+TDs <b>0.30&ndash;2.22&times;</b>. A 3-TD projection honestly spans 1 to 7,
+because TD-per-target carries year over year at only +0.221. A quarterback&rsquo;s TD rate is
+shrunk far harder than his yards: <b>k=300</b> against roughly 600 attempts
+rather than the 40 used for yardage, chosen on the fit period alone and worth
++3.5% out of sample. Without it a 46-TD season carried through nearly
+untouched. Interceptions show last season&rsquo;s count and
+are never projected, since INT rate carries at +0.055. QB passing yards is a
+<b>level, not a ranking</b>: it wins on error by shrinking outliers, and
+correlates with the actual at only +0.221.</p>
 <div class="posfilter" role="group" aria-label="Filter by position">{btns}</div>
 <div class="tw"><table class="pseason"><thead>
  <tr class="grp">
-  <th colspan="4"></th>
-  <th colspan="4" class="gwas">2025 actual</th>
-  <th colspan="6" class="gproj">2026 projected</th>
+  <th colspan="5" class="gwas">2025 actual</th>
+  <th colspan="4" class="gwas cpass">passing</th>
+  <th colspan="6" class="gproj cpass">2026 passing</th>
+  <th colspan="3" class="gwas crec">receiving</th>
+  <th colspan="7" class="gproj crec">2026 receiving</th>
+  <th colspan="2" class="gwas crush">rushing</th>
+  <th colspan="5" class="gproj crush">2026 rushing</th>
  </tr>
  <tr>
   <th class="s n">#</th><th class="s">player</th><th class="s">tm</th>
-  <th class="s">pos</th>
-  <th class="s n was">gm</th><th class="s n was">tgt</th>
-  <th class="s n was">rec yd</th><th class="s n was">rush yd</th>
-  <th class="s n">tgt</th><th class="s n">rec yd</th>
-  <th class="s n">rec band</th>
-  <th class="s n">car</th><th class="s n">rush yd</th>
-  <th class="s n">rush band</th>
+  <th class="s">pos</th><th class="s n was">gm</th>
+  <th class="s n was cpass">att</th><th class="s n was cpass">yds</th>
+  <th class="s n was cpass">TD</th><th class="s n was cpass">INT</th>
+  <th class="s n cpass">gm</th><th class="s n cpass">yards</th>
+  <th class="s n cpass">yd/gm</th><th class="s n cpass">band</th>
+  <th class="s n cpass">TDs</th><th class="s n cpass">band</th>
+  <th class="s n was crec">tgt</th><th class="s n was crec">yds</th>
+  <th class="s n was crec">TD</th>
+  <th class="s n crec">tgt</th><th class="s n crec">gm</th>
+  <th class="s n crec">yards</th><th class="s n crec">yd/gm</th>
+  <th class="s n crec">band</th><th class="s n crec">TDs</th>
+  <th class="s n crec">band</th>
+  <th class="s n was crush">car</th><th class="s n was crush">yds</th>
+  <th class="s n crush">car</th><th class="s n crush">gm</th>
+  <th class="s n crush">yards</th><th class="s n crush">yd/gm</th>
+  <th class="s n crush">band</th>
  </tr>
 </thead><tbody>{body}</tbody></table></div>'''
 
 
 PRIOR_SEASON_LABEL = "2025"
+
+
+def panel_news(con):
+    """Injury status and headlines. Context only, and it says so."""
+    if con is None:
+        return '<p class="lede">News needs a database connection.</p>'
+    try:
+        inj = con.execute("""
+            SELECT team, player, position, status, injury, reported_at
+            FROM ref.injury_current
+            WHERE status IS NOT NULL AND status <> 'Active'
+            ORDER BY
+              CASE status WHEN 'Out' THEN 0 WHEN 'Doubtful' THEN 1
+                          WHEN 'Injured Reserve' THEN 2
+                          WHEN 'Suspension' THEN 3
+                          WHEN 'Questionable' THEN 4 ELSE 5 END,
+              team, player
+        """).fetchall()
+        news = con.execute("""
+            SELECT published, headline, description, link
+            FROM ref.news_item
+            WHERE headline IS NOT NULL
+            ORDER BY published DESC LIMIT 30
+        """).fetchall()
+        cap = con.execute(
+            "SELECT cast(max(captured_at) AS VARCHAR) "
+            "FROM ref.injury_status").fetchone()[0]
+    except Exception:
+        return ('<p class="lede">No news captured yet &mdash; run '
+                '<span class="mono">capture_news.py</span>.</p>')
+
+    by_status = {}
+    for r in inj:
+        by_status[r[3]] = by_status.get(r[3], 0) + 1
+    chips = " ".join(
+        f'<span class="pill {"play" if s == "Questionable" else "pass"}">'
+        f'{e(s)} {n}</span>'
+        for s, n in sorted(by_status.items(), key=lambda kv: -kv[1]))
+
+    irows = "".join(
+        f'<tr data-team="{e(r[0])}">'
+        f'<td class="nm">{e(r[1])}</td>'
+        f'<td class="ps">{e(r[2] or "")}</td>'
+        f'<td>{e(r[0])}</td>'
+        f'<td><span class="ist is-{str(r[3])[:1].lower()}">{e(r[3])}</span></td>'
+        f'<td>{e(r[4] or "")}</td>'
+        f'<td class="ps">{e(str(r[5] or "")[:10])}</td></tr>' for r in inj)
+
+    nrows = "".join(
+        f'<li><div class="when">{e(str(r[0])[:16].replace("T", " "))}</div>'
+        f'<div class="hd">'
+        + (f'<a href="{e(r[3])}" target="_blank" rel="noopener">{e(r[1])}</a>'
+           if r[3] else e(r[1]))
+        + f'</div><p>{e(str(r[2] or "")[:260])}</p></li>' for r in news)
+
+    return f'''<p class="lede"><b>Context, not a signal.</b> The official injury
+report has a partial correlation of <b>+0.0425</b> with margin once the closing
+spread is held fixed, over 1,609 games &mdash; under the 0.05 bar this project
+uses, and the market visibly prices it already at +0.157 with the spread. So
+nothing here feeds a price. It is here to explain a number, not to move one.</p>
+<p class="lede" style="margin-top:11px">Status as of
+<b>{e(str(cap)[:16])}</b>. Players listed Active are omitted: they are the
+absence of news, and they were 508 of the 800 rows. Headlines link out to the
+source; only the headline and one line of description are stored.</p>
+<div class="chips">{chips}</div>
+<h4 class="nh">Injury report &middot; {len(inj)} players</h4>
+<div class="tw"><table><thead><tr>
+ <th class="s">player</th><th class="s">pos</th><th class="s">team</th>
+ <th class="s">status</th><th class="s">injury</th><th class="s">reported</th>
+</tr></thead><tbody>{irows}</tbody></table></div>
+<h4 class="nh">Headlines</h4>
+<ol class="log news">{nrows}</ol>'''
+
+
+LEDE_METRICS_1 = """<p class="lede"><b>Stability is not edge, and the
+difference is the whole point.</b> A stable metric is one the market has had
+every chance to price. Points per game is among the most stable numbers on this
+page and knows <b>nothing</b> the closing line does not. So the two tables below
+are separate on purpose: the first asks whether a number is measuring the team
+or the schedule, the second asks whether it beats a price.</p>
+
+<h4 class="nh">1. Does it describe the team?</h4>
+<p class="lede" style="margin-top:8px">Each cell is the correlation between a
+team&rsquo;s first N games and the <b>rest of that same season</b>, over
+2020&ndash;2025. Not split-half reliability, which asks an easier question, but
+the one you actually face in week 5, including the part where early opponents
+differ from late ones. A metric is usable when the number is high <b>and
+flat</b> across N. Still climbing at N=10 means it needs a full season. Pressure
+metrics are measured on 2023&ndash;2025 only, where the charting is native.</p>
+"""
+
+LEDE_METRICS_2 = """<p class="lede" style="margin-top:12px"><b>Three claims did
+not survive.</b> &ldquo;Prefer pressure rate to sack rate&rdquo; is a
+<b>defensive</b> rule, not a general one: on defense sack rate generated is
+noise (0.01 by N=10) while pressure generated reaches 0.43, but on offense it
+inverts and sack rate <i>allowed</i> (0.49) is the more stable of the two,
+because it carries quarterback identity and a quarterback is more stable than a
+line. Pace was expected to settle in 3&ndash;5 games and never gets past 0.39.
+Points per game was filed as noise and is more stable than pass EPA. Confirmed
+as claimed: PROE settles fast, every defensive metric is weak at every N,
+turnover margin decays toward zero, and red zone TD rate is close to noise.
+Offensive EPA is <b>better</b> than claimed, already usable at N=4.</p>
+
+<h4 class="nh">2. Does it beat the price?</h4>
+<p class="lede" style="margin-top:8px">Every metric built point-in-time from
+prior games only, differenced home minus away, then correlated with the margin
+<b>holding the closing spread fixed</b>. The raw column is there to show why raw
+correlation is worthless: everything correlates with margin, and so does the
+spread. Only the partial matters.</p>
+"""
+
+LEDE_METRICS_3 = """<p class="lede" style="margin-top:12px"><b>Nothing
+survives.</b> The largest absolute t across 17 metrics is <b>1.54</b>, and
+screening 17 at once needs about 3.0. At these sample sizes a correlation
+carries a standard error of 0.029 to 0.040 on its own, so a 0.06 partial is one
+and a half standard errors: two metrics nominally clearing a flat 0.05 bar is
+precisely what seventeen draws from noise look like, and both of those came out
+with the <b>wrong sign</b>. This is the third independent route to the same
+conclusion, after opponent-adjusted ratings at &minus;0.04 and the drive
+simulator at &minus;0.030.</p>
+<p class="lede" style="margin-top:11px"><b>So what is any of it for.</b> These
+numbers explain a line, size a result against expectation, and flag when a
+win came from something that will not repeat. Pressure rate is now stored per
+team-game and is new here. None of it enters a price on a side, because none of
+it earned that.</p>
+"""
+
+
+def panel_metrics(con):
+    """Which advanced metrics describe a team, and which of them beat a price.
+
+    Two tables because they answer two different questions, and conflating them
+    is the standard mistake. The first asks whether a number is measuring the
+    team or the schedule. The second asks whether it knows anything the closing
+    line does not. A metric can pass the first and fail the second, and nearly
+    all of them do.
+    """
+    if con is None:
+        return '<p class="lede">Metrics need a database connection.</p>'
+    try:
+        stab = con.execute("""
+            SELECT metric, claimed, n4, n6, n8, n10, verdict, grp
+            FROM mart.metric_stability
+        """).fetchall()
+        edge = con.execute("""
+            SELECT metric, games, raw, partial, se, tstat, verdict
+            FROM mart.metric_edge ORDER BY abs(tstat) DESC
+        """).fetchall()
+    except Exception:
+        return ('<p class="lede">Not measured yet. Run '
+                '<span class="mono">metric_stability.py</span> and '
+                '<span class="mono">metric_edge_test.py</span>.</p>')
+
+    def hue(v):
+        if v is None:
+            return ""
+        if v >= 0.45:
+            return "s-hi"
+        if v >= 0.30:
+            return "s-mid"
+        return "s-lo"
+
+    srows, seen = "", None
+    for m, claim, n4, n6, n8, n10, verd, grp in stab:
+        if grp != seen:
+            seen = grp
+            srows += '<tr class="grp"><td colspan="7">' + e(grp) + '</td></tr>'
+        cells = "".join(
+            f'<td class="n {hue(v)}">{v:.2f}</td>' if v is not None
+            else '<td class="n">&middot;</td>' for v in (n4, n6, n8, n10))
+        srows += (f'<tr><td class="nm">{e(m)}</td>'
+                  f'<td class="ps">{e(claim)}</td>{cells}'
+                  f'<td><span class="vd v-{verd.lower().replace(" ", "")}">'
+                  f'{e(verd)}</span></td></tr>')
+
+    erows = "".join(
+        f'<tr><td class="nm">{e(m)}</td><td class="n">{g:,}</td>'
+        f'<td class="n dim">{raw:+.3f}</td>'
+        f'<td class="n strong">{pc:+.3f}</td>'
+        f'<td class="n dim">{se:.3f}</td>'
+        f'<td class="n">{ts:+.2f}</td>'
+        f'<td><span class="vd v-{v.lower().replace(" ", "")}">{e(v)}</span></td>'
+        f'</tr>' for m, g, raw, pc, se, ts, v in edge)
+
+    return LEDE_METRICS_1 + (
+        '<div class="tw"><table><thead><tr>'
+        '<th class="s">metric</th><th class="s">claimed</th>'
+        '<th class="s n">N=4</th><th class="s n">N=6</th>'
+        '<th class="s n">N=8</th><th class="s n">N=10</th>'
+        '<th class="s">verdict</th>'
+        '</tr></thead><tbody>' + srows + '</tbody></table></div>'
+    ) + LEDE_METRICS_2 + (
+        '<div class="tw"><table><thead><tr>'
+        '<th class="s">metric</th><th class="s n">games</th>'
+        '<th class="s n">raw</th><th class="s n">partial</th>'
+        '<th class="s n">SE</th><th class="s n">t</th>'
+        '<th class="s">verdict</th>'
+        '</tr></thead><tbody>' + erows + '</tbody></table></div>'
+    ) + LEDE_METRICS_3
 
 
 def build(data, con=None, dash=None) -> str:
@@ -1315,6 +1627,8 @@ def build(data, con=None, dash=None) -> str:
         ("players", "Player season", None,
          panel_player_season(con, meta.get("season", 2026))),
         ("reads", "Outside reads", n_read, panel_reads(games)),
+        ("metrics", "Metrics", None, panel_metrics(con)),
+        ("news", "News", None, panel_news(con)),
         ("season", "Season", None, panel_season(con, meta.get("season", 2026),
                                                 meta["week"])),
         ("method", "Method", None, panel_method(meta, games)),

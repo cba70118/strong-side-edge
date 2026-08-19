@@ -55,6 +55,21 @@ BAND = {"p10": 0.34, "p25": 0.64, "p50": 1.01, "p75": 1.34, "p90": 1.77}
 # yards, and its band is far wider - p10 0.12 to p90 2.36. Sharing receiving's
 # band would understate rushing uncertainty by roughly half.
 RUSH_BAND = {"p10": 0.12, "p50": 1.05, "p90": 2.36}
+
+# Backtested the same way, fit 2021-22 and scored 2023-25. Each band is its
+# own; sharing one would understate QB yardage and halve receiver TD spread.
+REC_TD_BAND = {"p10": 0.30, "p50": 0.93, "p90": 2.22}   # +13.2% over naive
+PASS_YD_BAND = {"p10": 0.57, "p50": 1.01, "p90": 1.31}  # +13.8%
+PASS_TD_BAND = {"p10": 0.50, "p50": 1.01, "p90": 1.51}  # +17.2% at k=300
+# Passing TDs want far heavier shrinkage than passing yards. k=40 was tuned on
+# receiver targets, where it is 21% of a typical denominator; against a
+# quarterback's ~600 attempts it applies only 6%, so a 46-TD season carried
+# through almost untouched. k chosen on the fit period alone lands on 300 and is
+# worth +3.5% holdout MAE. Yards were tested the same way and REFUSED the
+# retune, so they keep k=40.
+SHRINK_PASS_TD = 300.0
+QB_GAMES_CONST = 14.31
+REC_GAMES_CONST = 14.76
 RUSH_GAMES_CONST = 12.54
 SHRINK_CARRY = 2.0
 LOW_GAMES = 11             # prior-season games at or below which availability
@@ -65,7 +80,22 @@ def log(m=""):
     print(m, flush=True)
 
 
+REG_VIEW = """
+-- Regular season only. mart.player_game_usage carries the postseason too,
+-- which is right for a per-game usage model and wrong for a season total: a
+-- 2025 "season" that reads 19 games and 208 targets is a Super Bowl run, not a
+-- season, and it overstates every player on a deep team. The validated
+-- backtests all read raw.stats_player_week WHERE season_type = 'REG', so this
+-- restores the construction that was actually measured.
+CREATE OR REPLACE TEMP VIEW usage_reg AS
+SELECT u.* FROM mart.player_game_usage u
+JOIN raw.games g USING (game_id)
+WHERE g.game_type = 'REG';
+"""
+
+
 def build(con) -> int:
+    con.execute(REG_VIEW)
     con.execute("""
         CREATE OR REPLACE TABLE mart.player_season_projection AS
         WITH prior AS (
@@ -77,8 +107,9 @@ def build(con) -> int:
                    avg(target_share) AS pr_share,
                    sum(carries)     AS pr_carries,
                    sum(rush_yards)  AS pr_rush_yards,
-                   avg(carry_share) AS pr_carry_share
-            FROM mart.player_game_usage
+                   avg(carry_share) AS pr_carry_share,
+                   any_value(0)     AS _pad
+            FROM usage_reg
             WHERE season = ? AND position IN ('WR', 'TE', 'RB')
             GROUP BY gsis_id
         ),
@@ -89,13 +120,13 @@ def build(con) -> int:
                        AS rush_per_game
             FROM (SELECT DISTINCT season, team, game_id, team_targets,
                          team_rush_plays
-                  FROM mart.player_game_usage WHERE season = ?)
+                  FROM usage_reg WHERE season = ?)
             GROUP BY team
         ),
         lg AS (
             SELECT sum(rec_yards) / nullif(sum(targets), 0)   AS lg_ypt,
                    sum(rush_yards) / nullif(sum(carries), 0)  AS lg_ypc
-            FROM mart.player_game_usage WHERE season = ?
+            FROM usage_reg WHERE season = ?
               AND position IN ('WR', 'TE', 'RB')
         ),
         -- 2026 team comes from the roster, not last season's team: 29% of
@@ -177,13 +208,155 @@ def build(con) -> int:
     return 0
 
 
+def build_extras(con) -> None:
+    """TD columns for skill players, and QB rows.
+
+    Kept as a second pass rather than folded into the main statement: the
+    passing side comes from raw.stats_player_week, a different grain from
+    mart.player_game_usage, and forcing them into one query would make both
+    harder to read and to check.
+    """
+    # 1. receiving TDs onto the existing skill rows
+    con.execute("""
+        ALTER TABLE mart.player_season_projection
+        ADD COLUMN IF NOT EXISTS pr_rec_tds INTEGER
+    """)
+    for col in ("proj_rec_tds", "p10_rec_tds", "p90_rec_tds",
+                "proj_pass_yards", "p10_pass_yards", "p90_pass_yards",
+                "proj_pass_tds", "p10_pass_tds", "p90_pass_tds",
+                "pr_attempts", "pr_pass_yards", "pr_pass_tds", "pr_ints",
+                "proj_games", "proj_games_rush"):
+        con.execute(f"ALTER TABLE mart.player_season_projection "
+                    f"ADD COLUMN IF NOT EXISTS {col} DOUBLE")
+
+    con.execute("""
+        WITH pr AS (
+            SELECT player_id, sum(receiving_tds) AS td, sum(targets) AS tg
+            FROM raw.stats_player_week
+            WHERE season = ? AND season_type = 'REG'
+            GROUP BY 1
+        ),
+        lg AS (
+            SELECT sum(receiving_tds) / nullif(sum(targets), 0) AS r
+            FROM raw.stats_player_week
+            WHERE season = ? AND season_type = 'REG'
+        )
+        UPDATE mart.player_season_projection p SET
+            pr_rec_tds   = pr.td,
+            proj_rec_tds = round(p.proj_targets
+                * ((pr.td + lg.r * ?) / (pr.tg + ?)), 1),
+            p10_rec_tds  = round(p.proj_targets
+                * ((pr.td + lg.r * ?) / (pr.tg + ?)) * ?, 1),
+            p90_rec_tds  = round(p.proj_targets
+                * ((pr.td + lg.r * ?) / (pr.tg + ?)) * ?, 1)
+        FROM pr, lg WHERE pr.player_id = p.gsis_id
+    """, [PRIOR, PRIOR, SHRINK_EFF, SHRINK_EFF, SHRINK_EFF, SHRINK_EFF,
+          REC_TD_BAND["p10"], SHRINK_EFF, SHRINK_EFF, REC_TD_BAND["p90"]])
+
+    # 2. quarterbacks as their own rows
+    con.execute("""
+        INSERT INTO mart.player_season_projection
+        (season, gsis_id, display_name, team, position, pr_games,
+         proj_targets, proj_rec_yards, proj_carries, proj_rush_yards,
+         availability_flag,
+         pr_attempts, pr_pass_yards, pr_pass_tds, pr_ints,
+         proj_pass_yards, p10_pass_yards, p90_pass_yards,
+         proj_pass_tds, p10_pass_tds, p90_pass_tds, proj_games)
+        WITH pr AS (
+            SELECT s.player_id, any_value(s.player_display_name) AS nm,
+                   any_value(s.team) AS team,
+                   count(*) AS games, sum(s.attempts) AS att,
+                   sum(s.passing_yards) AS yds, sum(s.passing_tds) AS tds,
+                   sum(s.passing_interceptions) AS ints
+            FROM raw.stats_player_week s
+            WHERE s.season = ? AND s.season_type = 'REG'
+            GROUP BY s.player_id
+            HAVING sum(s.attempts) >= 100
+        ),
+        -- The league prior must come from the SAME population the backtest
+        -- validated on: quarterbacks with 200+ attempts. Computing it over
+        -- anyone who threw a pass folds in 117 mop-up and trick-play games,
+        -- which dragged attempts per game from 29.9 down to 26.7 and pulled
+        -- every projection with it. Attempts per game is a mean of per-player
+        -- rates, not a pooled ratio, again matching the backtest.
+        lgpop AS (
+            SELECT player_id, sum(attempts) AS v, sum(passing_yards) AS y,
+                   sum(passing_tds) AS t, count(*) AS g
+            FROM raw.stats_player_week
+            WHERE season = ? AND season_type = 'REG'
+            GROUP BY player_id
+            HAVING sum(attempts) >= 200
+        ),
+        lg AS (
+            SELECT sum(y) / nullif(sum(v), 0)   AS ypa,
+                   sum(t) / nullif(sum(v), 0)   AS tdr,
+                   avg(v * 1.0 / nullif(g, 0))  AS apg
+            FROM lgpop
+        ),
+        calc AS (
+            SELECT pr.*,
+                   ((pr.att / pr.games) * pr.games + lg.apg * ?)
+                       / (pr.games + ?) * ?                       AS vol,
+                   (pr.yds + lg.ypa * ?) / (pr.att + ?)           AS ypa,
+                   (pr.tds + lg.tdr * ?) / (pr.att + ?)           AS tdr
+            FROM pr CROSS JOIN lg
+        )
+        SELECT ?, player_id, nm, team, 'QB', games,
+               NULL, NULL, NULL, NULL, games <= ?,
+               att, yds, tds, ints,
+               round(vol * ypa, 0), round(vol * ypa * ?, 0),
+               round(vol * ypa * ?, 0),
+               round(vol * tdr, 1), round(vol * tdr * ?, 1),
+               round(vol * tdr * ?, 1), ?
+        FROM calc
+    """, [PRIOR, PRIOR, SHRINK_TGT, SHRINK_TGT, QB_GAMES_CONST,
+          SHRINK_EFF, SHRINK_EFF, SHRINK_PASS_TD, SHRINK_PASS_TD,
+          SEASON, LOW_GAMES,
+          PASS_YD_BAND["p10"], PASS_YD_BAND["p90"],
+          PASS_TD_BAND["p10"], PASS_TD_BAND["p90"], QB_GAMES_CONST])
+
+    # Every group is projected over fewer than 17 games because that is what
+    # the population actually plays. Storing the basis makes the discount
+    # visible on the page instead of looking like a forecast of decline.
+    # Receiving and rushing were fit on DIFFERENT games constants, so one
+    # column cannot label both. A running back with 981 projected rush yards
+    # over 12.54 games is 78.2 a game; printing 14.76 beside it would state a
+    # rate the model never produced, which is worse than stating none.
+    con.execute("UPDATE mart.player_season_projection SET proj_games = ? "
+                "WHERE position <> 'QB' AND proj_rec_yards IS NOT NULL",
+                [REC_GAMES_CONST])
+    con.execute("UPDATE mart.player_season_projection SET proj_games_rush = ? "
+                "WHERE proj_rush_yards IS NOT NULL", [RUSH_GAMES_CONST])
+
+    n = con.execute("SELECT count(*) FROM mart.player_season_projection "
+                    "WHERE position = 'QB'").fetchone()[0]
+    td = con.execute("SELECT count(*) FROM mart.player_season_projection "
+                     "WHERE proj_rec_tds IS NOT NULL").fetchone()[0]
+    log(f"  added {n} quarterbacks and receiving TDs on {td} skill players")
+    log("")
+    log("  top projected passers:")
+    log(f"    {'player':<24}{'tm':<5}{'yards':>7}{'band':>16}{'TDs':>6}"
+        f"{'band':>12}")
+    for r in con.execute("""
+        SELECT display_name, team, proj_pass_yards, p10_pass_yards,
+               p90_pass_yards, proj_pass_tds, p10_pass_tds, p90_pass_tds
+        FROM mart.player_season_projection WHERE position = 'QB'
+        ORDER BY proj_pass_yards DESC LIMIT 8
+    """).fetchall():
+        log(f"    {str(r[0])[:23]:<24}{str(r[1]):<5}{r[2]:>7.0f}"
+            f"{f'{r[3]:.0f}-{r[4]:.0f}':>16}{r[5]:>6.1f}"
+            f"{f'{r[6]:.1f}-{r[7]:.1f}':>12}")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--db", type=Path, default=DEFAULT_DB)
     a = ap.parse_args()
     con = duckdb.connect(str(a.db))
     try:
-        return build(con)
+        rc = build(con)
+        build_extras(con)
+        return rc
     finally:
         con.close()
 

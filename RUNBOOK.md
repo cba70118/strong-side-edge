@@ -1612,3 +1612,33 @@ where we hold DK/FD/MGM and the sharp number is a point better. Both passes
 were correct. The placement had genuine line value and still did not clear the
 vig — exactly the distinction the margin model exists to make visible, and one
 the line-points view alone would have hidden.
+
+## Pressure rate (mart.team_pressure)
+
+    py -3 scripts/build_pressure.py      # 3,386 team-games, 32 teams
+
+Substrate trap. `raw.pbp_participation.was_pressure` runs 2020-2025 but before
+2023 it is populated on **non-sack dropbacks only** - every sack carries NULL.
+Read naively this drops the most-pressured plays in football from both numerator
+and denominator and reports a 0.0% sack rate for 2020-2022 while otherwise
+looking fine. Recovered by treating a sack as a pressure: in 2023-2025, where
+the field is native on every dropback, 4,201 of 4,203 sacks are flagged
+pressured (99.95%). Uncharted dropbacks (~1,000 a year pre-2023) stay OUT of the
+denominator rather than being assumed clean. Rows carry `native`; restrict to
+2023+ for any model. League pressure rate reads 33-34% in 2020-22 vs 29-31% in
+2023-25, so the eras are not safely comparable in level.
+
+Not available, so stop looking: true yards per route run. `participation.route`
+describes the play, not each player, so routes run per receiver cannot be
+recovered. `route_proxy_snaps` in `mart.player_game_usage` stays the best
+opportunity denominator.
+
+## Metric screens
+
+    py -3 scripts/metric_stability.py    # -> mart.metric_stability (25 rows)
+    py -3 scripts/metric_edge_test.py    # -> mart.metric_edge (17 rows)
+
+Stability = first N games vs the rest of the same season. Edge = partial
+correlation with margin holding the closing spread fixed. Nothing clears the
+edge screen; largest |t| is 1.54 across 17 metrics, where multiplicity needs
+about 3.0.

@@ -140,6 +140,18 @@ def main() -> int:
         run([PY, str(ROOT / "scripts" / "capture.py"), "--phase", "adhoc"],
             "capture")
 
+    # Injury status and headlines. Cheap, unauthenticated, and it fails soft:
+    # a network blip leaves the last capture in place rather than blanking the
+    # News tab.
+    run([PY, str(ROOT / "scripts" / "capture_news.py")], "news")
+
+    # Pressure rate and the two metric screens. Cheap, and they must be rebuilt
+    # in-season: the stability table is the thing that says whether a week-5
+    # read is a team or a schedule, so it has to include the season underway.
+    run([PY, str(ROOT / "scripts" / "build_pressure.py")], "pressure")
+    run([PY, str(ROOT / "scripts" / "metric_stability.py")], "stability")
+    run([PY, str(ROOT / "scripts" / "metric_edge_test.py")], "metric edge")
+
     rc, _ = run([PY, str(ROOT / "scripts" / "slate_data.py"),
                  "--season", str(a.season), "--week", str(week), "-o", slate],
                 "slate_data")
