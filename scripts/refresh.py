@@ -163,9 +163,18 @@ def main() -> int:
         log("  NO PASSPHRASE on file. Refusing to publish, because a fresh one "
             "would lock you out of your own link.")
         return 1
+    # Show the capture time on the gate, so freshness is visible BEFORE the
+    # reader unlocks rather than only in the masthead afterwards.
+    cap = ""
+    try:
+        import json as _json
+        cap = str((_json.loads(Path(slate).read_text(encoding="utf-8"))
+                   .get("meta") or {}).get("captured") or "")[:16]
+    except Exception:
+        pass
     rc, _ = run([PY, str(ROOT / "scripts" / "publish_site.py"),
                  "-i", f"{tag}_brief.html", "-o", "docs/index.html",
-                 "--passphrase", ph], "publish")
+                 "--passphrase", ph, "--captured", cap], "publish")
     if rc:
         return 1
 
