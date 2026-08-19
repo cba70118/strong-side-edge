@@ -387,14 +387,23 @@ def render_team(t, d, ranks, open_=False):
     srows = ""
     for s in (d["sched"].get(t) or []):
         o = d["teams"].get(s["opp"], {})
-        srows += (f'<tr><td class="n">{s["week"]}</td>'
-                  f'<td class="ps">{e(s["at"])}</td>'
-                  f'<td class="nm">{e(s["opp"])}</td>'
-                  f'<td class="n">{num(o.get("blended"), 3, True)}</td>'
-                  f'<td class="n">{ranks["net"].get(s["opp"]) or "--"}</td></tr>')
-    stable = (f'<table class="pl sch"><thead><tr><th class="n">wk</th><th></th>'
-              f'<th>opponent</th><th class="n">their rating</th>'
-              f'<th class="n">rank</th></tr></thead>'
+        # Opponent strength in POINTS, like every other figure on the page.
+        # It was the last place still printing a raw rating, which is why the
+        # column read as misaligned: a 6-glyph +0.037 under a two-word header
+        # beside two narrow integer columns.
+        srows += (f'<tr><td class="n wk">{s["week"]}</td>'
+                  f'<td class="ps at">{e(s["at"])}</td>'
+                  f'<td class="nm opp"><span class="lg lg-{e(s["opp"])}"></span>'
+                  f'<b>{e(s["opp"])}</b>'
+                  f'<span class="oname">{e(o.get("name") or "")}</span></td>'
+                  f'<td class="n">{pts(o.get("blended"))}</td>'
+                  f'<td class="n rk">{ranks["net"].get(s["opp"]) or "--"}</td>'
+                  f'</tr>')
+    stable = (f'<table class="pl sch"><thead><tr>'
+              f'<th class="n wk">wk</th><th class="at"></th>'
+              f'<th class="opp">opponent</th>'
+              f'<th class="n">strength</th>'
+              f'<th class="n rk">rank</th></tr></thead>'
               f'<tbody>{srows}</tbody></table>') if srows else ""
 
     dm = d["drives"].get(t)
@@ -589,6 +598,18 @@ LEDGER_CSS = """
 .ledger table.pl td.ps{color:var(--ink3);font-size:10.5px;
   letter-spacing:.06em;text-transform:uppercase}
 .ledger table.sch td.nm,.ledger table.pl td.nm{font-weight:600}
+/* Fixed layout so the numeric columns hold position instead of floating
+   beside a stretched opponent name. */
+.ledger table.sch{table-layout:fixed}
+.ledger table.sch .wk{width:46px}
+.ledger table.sch .at{width:36px;color:var(--ink3)}
+.ledger table.sch .rk{width:54px}
+.ledger table.sch th:nth-child(4),.ledger table.sch td:nth-child(4){width:96px}
+.ledger table.sch td.opp{display:flex;align-items:center;gap:7px;
+  white-space:nowrap;overflow:hidden}
+.ledger table.sch td.opp .lg{width:16px;height:16px;flex:0 0 16px}
+.ledger table.sch .oname{color:var(--ink3);font-weight:400;font-size:11px;
+  overflow:hidden;text-overflow:ellipsis}
 .ledger .tw{overflow-x:auto}
 .ledger .sec{padding:16px 16px 0;color:var(--ink);font-weight:600}
 

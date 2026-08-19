@@ -34,6 +34,9 @@ from __future__ import annotations
 
 import html
 
+# Points of margin per unit of rating, measured in build_mart --evaluate.
+PTS_PER_RATING = 39.18
+
 # Ordered good -> bad. Punt is deliberately absent; it is the track.
 DRIVE_KEYS = [("td", "TD"), ("fg", "FG"), ("dn", "Downs"), ("to", "Turnover")]
 
@@ -106,14 +109,17 @@ def _fmt(v, dp=3, sign=True):
 def net_trend(series, width=330, height=118, label="net rating"):
     """Weekly net rating with a readable scale, a drawn zero and a called-out
     endpoint. `series` is [(week, value), ...]."""
-    pts = [(w, v) for w, v in (series or []) if v is not None]
+    # POINTS everywhere. A weekly line labelled +0.093 is unreadable next to
+    # tiles that say +6.0, and three decimals is precision the rating does not
+    # carry.
+    pts = [(w, v * PTS_PER_RATING) for w, v in (series or []) if v is not None]
     if len(pts) < 2:
         return '<p class="empty">Not enough weekly history to draw a trend.</p>'
     L, R, T, B = 40, 46, 12, 20
     iw, ih = width - L - R, height - T - B
     ys = [v for _, v in pts]
     lo, hi = min(ys), max(ys)
-    pad = (hi - lo) * 0.18 or 0.02
+    pad = (hi - lo) * 0.18 or 0.8
     lo, hi = lo - pad, hi + pad
     if lo > 0:
         lo = -pad          # zero must be inside the frame or it cannot anchor
@@ -133,7 +139,7 @@ def net_trend(series, width=330, height=118, label="net rating"):
     last_w, last_v = pts[-1]
     hits = "".join(
         f'<g><circle class="hit" cx="{X(i):.1f}" cy="{Y(v):.1f}" r="9">'
-        f'<title>week {w}: {_fmt(v)}</title></circle></g>'
+        f'<title>week {w}: {v:+.1f} pts</title></circle></g>'
         for i, (w, v) in enumerate(pts))
     return f'''<svg class="cv" viewBox="0 0 {width} {height}" role="img"
  aria-label="{e(label)} by week, ending at {_fmt(last_v)}">
@@ -141,10 +147,10 @@ def net_trend(series, width=330, height=118, label="net rating"):
  <polygon class="area" points="{area}"/>
  <polyline class="ln" points="{line}"/>
  <circle class="dot" cx="{X(n - 1):.1f}" cy="{Y(last_v):.1f}" r="3.6"/>
- <text class="val" x="{X(n - 1) + 7:.1f}" y="{Y(last_v) + 4:.1f}">{_fmt(last_v)}</text>
- <text class="ax" x="{L - 5}" y="{T + 4}" text-anchor="end">{_fmt(hi, 2)}</text>
+ <text class="val" x="{X(n - 1) + 7:.1f}" y="{Y(last_v) + 4:.1f}">{last_v:+.1f}</text>
+ <text class="ax" x="{L - 5}" y="{T + 4}" text-anchor="end">{hi:+.1f}</text>
  <text class="ax" x="{L - 5}" y="{zero + 3:.1f}" text-anchor="end">0</text>
- <text class="ax" x="{L - 5}" y="{T + ih + 3}" text-anchor="end">{_fmt(lo, 2)}</text>
+ <text class="ax" x="{L - 5}" y="{T + ih + 3}" text-anchor="end">{lo:+.1f}</text>
  <text class="ax" x="{L}" y="{height - 6}">wk {pts[0][0]}</text>
  <text class="ax" x="{L + iw}" y="{height - 6}" text-anchor="end">wk {last_w}</text>
  {hits}
@@ -160,9 +166,14 @@ def off_def(off, dfn, off_rank, dfn_rank, width=330, height=92):
     """
     if off is None or dfn is None:
         return '<p class="empty">No split available.</p>'
-    d_good = -dfn
-    span = max(0.12, abs(off), abs(d_good)) * 1.15
-    L, R = 84, 52
+    # POINTS, not raw rating. A 3-decimal "+0.130" is six glyphs of false
+    # precision set at 11px bold, and at this width it ran straight into the
+    # rank label at the right edge. It also disagreed with every other figure
+    # on the page, which reads in points.
+    off = off * PTS_PER_RATING
+    d_good = -dfn * PTS_PER_RATING
+    span = max(4.0, abs(off), abs(d_good)) * 1.18
+    L, R = 84, 62
     iw = width - L - R
     mid = L + iw / 2
 
@@ -170,19 +181,21 @@ def off_def(off, dfn, off_rank, dfn_rank, width=330, height=92):
         w = abs(v) / span * (iw / 2)
         x = mid if v >= 0 else mid - w
         return (f'<rect class="{cls}" x="{x:.1f}" y="{y}" width="{max(w, 1.5):.1f}"'
-                f' height="16" rx="2"><title>{e(name)} {_fmt(v)}, rank {rank}</title></rect>'
+                f' height="16" rx="2"><title>{e(name)} {v:+.1f} pts, '
+                f'rank {rank}</title></rect>'
                 f'<text class="barlab" x="{L - 8}" y="{y + 12}" text-anchor="end">'
                 f'{e(name)}</text>'
-                f'<text class="val" x="{width - R + 6}" y="{y + 12}">{_fmt(v)}</text>'
-                f'<text class="ax" x="{width - 4}" y="{y + 12}" text-anchor="end">'
+                f'<text class="val" x="{width - R + 6}" y="{y + 12}">{v:+.1f}</text>'
+                f'<text class="ax" x="{width - 2}" y="{y + 12}" text-anchor="end">'
                 f'#{rank}</text>')
 
     return f'''<svg class="cv" viewBox="0 0 {width} {height}" role="img"
- aria-label="offense {_fmt(off)}, defense {_fmt(d_good)}, higher is better">
+ aria-label="offense {off:+.1f} points, defense {d_good:+.1f} points,
+ higher is better">
  <line class="zero" x1="{mid:.1f}" y1="14" x2="{mid:.1f}" y2="{height - 20}"/>
  {bar(off, 20, "pos" if off >= 0 else "negb", "Offense", off_rank or "--")}
  {bar(d_good, 46, "pos" if d_good >= 0 else "negb", "Defense", dfn_rank or "--")}
- <text class="ax" x="{mid:.1f}" y="{height - 6}" text-anchor="middle">league average</text>
+ <text class="ax" x="{mid:.1f}" y="{height - 6}" text-anchor="middle">league average, points</text>
  <text class="ax" x="{L}" y="10">worse</text>
  <text class="ax" x="{L + iw}" y="10" text-anchor="end">better</text>
 </svg>'''
@@ -277,8 +290,8 @@ def season_line(points, width=330, height=96):
     iw, ih = width - L - R, height - T - B
     ys = [v for _, v in pts]
     lo, hi = min(ys), max(ys)
-    pad = (hi - lo) * 0.25 or 0.02
-    lo, hi = min(lo - pad, -0.01), max(hi + pad, 0.01)
+    pad = (hi - lo) * 0.25 or 0.8
+    lo, hi = min(lo - pad, -0.4), max(hi + pad, 0.4)
     n = len(pts)
 
     def X(i):
@@ -290,7 +303,7 @@ def season_line(points, width=330, height=96):
     line = " ".join(f"{X(i):.1f},{Y(v):.1f}" for i, (_, v) in enumerate(pts))
     dots = "".join(
         f'<circle class="dot" cx="{X(i):.1f}" cy="{Y(v):.1f}" r="3">'
-        f'<title>{s}: {_fmt(v)}</title></circle>'
+        f'<title>{s}: {v:+.1f} pts</title></circle>'
         f'<text class="ax" x="{X(i):.1f}" y="{height - 6}" '
         f'text-anchor="middle">{str(s)[2:]}</text>'
         for i, (s, v) in enumerate(pts))
@@ -299,7 +312,7 @@ def season_line(points, width=330, height=96):
  <line class="zero" x1="{L}" y1="{Y(0):.1f}" x2="{L + iw}" y2="{Y(0):.1f}"/>
  <polyline class="ln" points="{line}"/>
  {dots}
- <text class="ax" x="{L - 5}" y="{T + 4}" text-anchor="end">{_fmt(hi, 2)}</text>
+ <text class="ax" x="{L - 5}" y="{T + 4}" text-anchor="end">{hi:+.1f}</text>
  <text class="ax" x="{L - 5}" y="{Y(0) + 3:.1f}" text-anchor="end">0</text>
- <text class="ax" x="{L - 5}" y="{T + ih + 3}" text-anchor="end">{_fmt(lo, 2)}</text>
+ <text class="ax" x="{L - 5}" y="{T + ih + 3}" text-anchor="end">{lo:+.1f}</text>
 </svg>'''
