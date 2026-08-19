@@ -412,10 +412,14 @@ JS_POS = r"""<script>
     var i=0;
     rows.forEach(function(r){
       var on = (pos==='ALL') || (r.dataset.pos===pos);
-      /* A backup's projection is conditional on him starting, so it is hidden
-         by default rather than deleted. Depth rank 1 is the starter; 9 is the
-         placeholder for a player on no 2026 chart at all. */
-      if(on && only && r.dataset.rank !== '1') on = false;
+      /* A backup's projection is conditional on him starting, so it is
+         hidden by default rather than deleted. How deep "starter" goes is
+         POSITION-DEPENDENT: one quarterback, but three receivers and two
+         backs take the field. Gating everyone at rank 1 hid George Pickens at
+         1,190 projected yards. 9 is the placeholder for a player on no 2026
+         chart at all. */
+      var DEPTH={QB:1, RB:2, WR:3, TE:1};
+      if(on && only && (+r.dataset.rank) > (DEPTH[r.dataset.pos]||1)) on=false;
       r.hidden = !on;
       if(on){ i++; r.cells[0].textContent = i; }
     });
@@ -976,16 +980,16 @@ def panel_picks(con, season, week):
     n_su = len({x for s, x in experts if s == "espn"})
     return f'''<h4 class="nh">Published picks &middot; {len(games)} games</h4>
 <p class="lede"><b>Consensus, not a tip sheet.</b> {n_ats} writers picking
-against the spread and {n_su} picking straight up. The bar is how the room
-split; hover a segment for names. A <b>unanimous</b> game is the one worth
+against the spread{f", and {n_su} picking straight up" if n_su else ""}. The
+bar is how the room split; hover a segment for names. A <b>unanimous</b> game is the one worth
 knowing about, because that is where our own number disagreeing is most in need
 of an explanation and least likely to be an edge.</p>
 <p class="lede" style="margin-top:9px">These are stored and graded here against
 the <b>closing</b> line, never against the record an outlet publishes for
 itself. For scale, the best-known name on that grid shows 141-138-3 lifetime
-against the spread, which is 50.5%. ESPN picks are kept separate and labeled:
-they are straight-up winners, so they are nearly all favorites and carry
-information only on close games.
+against the spread, which is 50.5%. ESPN&rsquo;s grid is captured too and kept
+separate when it posts: those are straight-up winners, so they are nearly all
+favorites and carry information only on close games.
 {f'<a href="{e(link)}" target="_blank" rel="noopener">source</a>' if link else ""}</p>
 <div class="ptable">{out}</div>'''
 
@@ -1302,6 +1306,13 @@ is the only valid comparison when the handicaps differ.</p>
 built or played yet. Nothing on this page is back-filled.</p>'''
 
 
+# How deep "starter" runs, by position. One quarterback takes the field,
+# but three receivers and two backs do, so gating everyone at depth rank 1
+# hid George Pickens at 1,190 projected yards. The filter, the badge and the
+# count on the control all read this one map.
+STARTER_DEPTH = {"QB": 1, "RB": 2, "WR": 3, "TE": 1}
+
+
 def panel_player_season(con, season):
     """Season projections: QBs, skill players, touchdowns, per-stat bands.
 
@@ -1388,7 +1399,7 @@ def panel_player_season(con, season):
         # and unlabeled beside a starter's line it reads as the same claim.
         if drank is None:
             f += '<em class="tag neg">not on a 2026 chart</em>'
-        elif drank > 1:
+        elif drank > STARTER_DEPTH.get(pos, 1):
             f += f'<em class="tag dim">{e(dpos or pos)}{drank}</em>'
         body += (
             f'<tr data-pos="{e(pos)}" data-rank="{drank or 9}">'
@@ -1452,7 +1463,10 @@ def panel_player_season(con, season):
     counts = {}
     for r in rows:
         counts[r[2]] = counts.get(r[2], 0) + 1
-    starters = sum(1 for r in rows if (r[31] or 9) == 1)
+    # depth_rank is the second-to-last selected column; r[31] is proj_games
+    # and counting on it silently returned zero
+    starters = sum(1 for r in rows
+                   if (r[-2] or 9) <= STARTER_DEPTH.get(r[2], 1))
     btns = ('<button data-pos="ALL" aria-pressed="true">All'
             f'<span class="ct">{len(rows)}</span></button>')
     for pos in ("QB", "WR", "RB", "TE"):

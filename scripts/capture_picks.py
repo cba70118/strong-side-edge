@@ -205,6 +205,20 @@ def capture(con, season, week):
             ("ESPN", ESPN.format(week=week), parse_espn)):
         try:
             rows = parser(get(url), season, week, url, now)
+            # Append-only is deliberate: a pick changed midweek is two facts
+            # about the week. Re-storing an IDENTICAL pick is not a fact, it
+            # is a copy, and it was doubling the table on every refresh.
+            if rows:
+                seen = {tuple(x) for x in con.execute("""
+                    SELECT source, expert, away, home, pick_team, pick_line
+                    FROM ref.expert_pick_current
+                    WHERE season = ? AND week = ?
+                """, [season, week]).fetchall()}
+                rows = [r for r in rows
+                        if (r[1], r[4], r[6], r[7], r[9], r[10]) not in seen]
+                if not rows:
+                    log(f"  {label} unchanged since the last capture")
+                    continue
             if rows:
                 con.executemany(
                     "INSERT INTO ref.expert_pick "
