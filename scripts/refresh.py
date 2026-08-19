@@ -205,9 +205,14 @@ def main() -> int:
     run(["git", "add", "docs"], "git add")
     msg = (f"Refresh {a.season} week {week} "
            f"({datetime.now():%Y-%m-%d %H:%M})")
+    # Commit the docs PATHSPEC, not the index. A bare commit takes whatever is
+    # already staged, so anything a person left staged - or a half-finished
+    # earlier run - gets swept into a message that says "Refresh" and describes
+    # none of it. This job runs unattended on a schedule; it must touch only
+    # what it built.
     run(["git", "-c", "user.name=cba70118",
          "-c", "user.email=cba70118@users.noreply.github.com",
-         "commit", "-q", "-m", msg], "git commit")
+         "commit", "-q", "-m", msg, "--", "docs"], "git commit")
     rc, _ = run(["git", "push", "-q", "origin", "HEAD"], "git push")
     log("  published" if rc == 0 else "  push failed; commit is local")
     return 0
