@@ -65,15 +65,36 @@ WITH roster AS (
     -- prop path had no projection for any Cardinal. It is the only unmapped
     -- code in the warehouse, and it was invisible until something asked a
     -- question per team.
+    -- DEPTH-LIMITED, and this is the whole ballgame. The shares below are
+    -- renormalized so a team's targets sum to one, so every extra body in
+    -- this pool takes share away from the players who will actually get the
+    -- ball. Rostering all 27 skill players - six of them with no NFL history
+    -- at all, each carrying a league-baseline floor - halved everybody real:
+    -- Smith-Njigba came out at a 0.182 target share against a 0.368 actual,
+    -- which is why every prop this layer priced said UNDER.
+    --
+    -- The depth chart is the fix. Five receivers, three tight ends and four
+    -- backs is roughly who sees a target in a real game.
     SELECT DISTINCT r.gsis_id,
-           coalesce(a.team_id, r.team) AS team,
+           coalesce(d.team, a.team_id, r.team) AS team,
            r.position
     FROM raw.roster_weekly r
     LEFT JOIN ref.team_alias a ON a.alias = r.team AND a.source = 'legacy'
+    JOIN (
+        SELECT gsis_id, any_value(team) AS team, min(pos_rank) AS rank,
+               any_value(pos_abb) AS pos
+        FROM raw.depth_charts
+        WHERE dt = (SELECT max(dt) FROM raw.depth_charts)
+          AND gsis_id IS NOT NULL
+        GROUP BY gsis_id
+    ) d ON d.gsis_id = r.gsis_id
     WHERE r.season = {season} AND r.week = 1
       AND r.gsis_id IS NOT NULL
       AND r.position IN ('WR','TE','RB')
       AND (r.status IS NULL OR r.status IN ('ACT','A01','RES'))
+      AND d.rank <= CASE r.position WHEN 'WR' THEN 5
+                                    WHEN 'TE' THEN 3
+                                    WHEN 'RB' THEN 4 ELSE 3 END
 ),
 ranked AS (
     -- each player's most recent games, whenever they were
@@ -83,7 +104,13 @@ ranked AS (
            row_number() OVER (PARTITION BY u.gsis_id
                               ORDER BY u.season DESC, u.week DESC) AS rn
     FROM mart.player_game_usage u
-    WHERE u.season <= {season} - 1
+    JOIN raw.games g ON g.game_id = u.game_id
+    -- REGULAR SEASON ONLY. Without this the six-game window reaches back
+    -- through the postseason, so a receiver on a deep run is projected off
+    -- his Super Bowl and Divisional games. Smith-Njigba's window was three
+    -- playoff games and three regular-season ones, which is how the prop
+    -- path had him at 39.6 yards against a 105-yard regular-season average.
+    WHERE u.season <= {season} - 1 AND g.game_type = 'REG'
 ),
 prior AS (
     SELECT gsis_id,
@@ -103,8 +130,10 @@ vol AS (
     SELECT team,
            avg(team_targets)     AS proj_team_targets,
            avg(team_rush_plays)  AS proj_team_rush
-    FROM (SELECT DISTINCT game_id, team, team_targets, team_rush_plays
-          FROM mart.player_game_usage WHERE season = {season} - 1)
+    FROM (SELECT DISTINCT u.game_id, u.team, u.team_targets, u.team_rush_plays
+          FROM mart.player_game_usage u
+          JOIN raw.games g ON g.game_id = u.game_id
+          WHERE u.season = {season} - 1 AND g.game_type = 'REG')
     GROUP BY team
 ),
 shrunk AS (

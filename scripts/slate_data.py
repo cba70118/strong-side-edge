@@ -155,7 +155,53 @@ def load_projections(con, season, week):
     return projections, "player_projection_pre x schedule"
 
 
-def price_props(quotes, projections, params, min_edge):
+# How far the two projection layers may differ before a prop is unquotable.
+# 15%: wider than that and the disagreement dwarfs any real prop edge.
+LAYER_TOL = 0.15
+
+# Per-game stat key -> (field on the per-game row, season-layer column).
+# The stat keys are PROP_MARKETS values, not the column names; using the
+# column names here matched nothing and the gate silently never fired.
+_LAYER_COL = {
+    "rec_yds":    ("proj_rec_yards", "proj_rec_yards"),
+    "rush_yds":   ("proj_rush_yards", "proj_rush_yards"),
+    "receptions": ("proj_receptions", "proj_receptions"),
+}
+
+
+def _layer_gap(cross, gsis_id, stat, proj):
+    """(per-game x 17 - season) / season, or None when it cannot be checked."""
+    pair = _LAYER_COL.get(stat)
+    if not pair or not gsis_id or not cross or not isinstance(proj, dict):
+        return None
+    per_game = proj.get(pair[0])
+    season_val = cross.get((gsis_id, pair[1]))
+    if not per_game or not season_val:
+        return None
+    return (per_game * 17.0 - season_val) / season_val
+
+
+def layer_cross_check(con, season):
+    """Season-layer values keyed by (gsis_id, column), for the gap check."""
+    out = {}
+    if con is None:
+        return out
+    try:
+        rows = con.execute(f"""
+            SELECT gsis_id, {", ".join(v[1] for v in _LAYER_COL.values())}
+            FROM mart.player_season_projection WHERE season = ?
+        """, [season]).fetchall()
+    except Exception:
+        return out
+    for r in rows:
+        for i, col in enumerate((v[1] for v in _LAYER_COL.values()),
+                                start=1):
+            if r[i] is not None:
+                out[(r[0], col)] = r[i]
+    return out
+
+
+def price_props(quotes, projections, params, min_edge, cross=None):
     """Join posted player lines to our projections and price the ones we can.
 
     THIS IS THE WHOLE POINT OF THE PROJECTION LAYER. A usage projection that
@@ -189,6 +235,22 @@ def price_props(quotes, projections, params, min_edge):
             row["status"] = "no_projection"
             row["reason"] = ("Player resolved to a gsis_id but has no 2026 "
                              "usage projection - no prior games to project from.")
+            out.append(row)
+            continue
+        # DO OUR OWN TWO PROJECTIONS AGREE. The per-game layer that prices
+        # props and the season layer on the players page are built from
+        # different shrinkage, and the per-game one compresses stars toward
+        # the middle (0.82x on 1000-yard receivers). Where they disagree, an
+        # apparent edge is a statement about our own inconsistency rather than
+        # about the book, so it is refused instead of quoted.
+        dis = _layer_gap(cross, row.get("gsis_id"), stat, proj)
+        if dis is not None and abs(dis) > LAYER_TOL:
+            row["status"] = "refused"
+            row["reason"] = (
+                f"Our two projections for this player disagree by "
+                f"{abs(dis) * 100:.0f}%. The per-game model compresses high "
+                f"usage toward the middle, so an edge here would be measuring "
+                f"that, not the price.")
             out.append(row)
             continue
         if len(sides) != 2:
@@ -605,7 +667,8 @@ def build(con, season, week, n_sims, min_edge=MIN_EDGE):
     projections, proj_source = load_projections(con, season, week)
 
     props = (price_props(prop_quotes(con, season, week), projections,
-                         pm_params, min_edge) if pm_params else [])
+                         pm_params, min_edge,
+                         layer_cross_check(con, season)) if pm_params else [])
     log(f"  projections: {len(projections):,} player-games "
         f"from {proj_source}")
     if not projections:
