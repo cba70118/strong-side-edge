@@ -85,6 +85,11 @@ SHRINK_CATCH = 60.0
 REC_BAND = {"p10": 0.68, "p50": 0.96, "p90": 1.34}
 # A quarterback's carries are a scheme decision that can change overnight,
 # which is why this band is the widest on the page.
+# Rushing TDs shrink hardest of anything here: k=400 against a few hundred
+# carries. A goal-line back's touchdown count is mostly opportunity and luck,
+# so last season's total is a poor guide to next season's.
+RUSH_TD_K = 400.0
+RUSH_TD_BAND = {"p10": 0.24, "p50": 0.86, "p90": 1.97}
 QB_RUSH_K = 10.0
 QB_RUSH_BAND = {"p10": 0.38, "p50": 0.85, "p90": 1.59}
 SHRINK_PASS_TD = 300.0
@@ -247,7 +252,9 @@ def build_extras(con) -> None:
                 "pr_attempts", "pr_pass_yards", "pr_pass_tds", "pr_ints",
                 "proj_games", "proj_games_rush",
                 "pr_receptions", "proj_receptions",
-                "p10_receptions", "p90_receptions"):
+                "p10_receptions", "p90_receptions",
+                "pr_rush_tds", "proj_rush_tds",
+                "p10_rush_tds", "p90_rush_tds"):
         con.execute(f"ALTER TABLE mart.player_season_projection "
                     f"ADD COLUMN IF NOT EXISTS {col} DOUBLE")
 
@@ -366,6 +373,33 @@ def build_extras(con) -> None:
     """, [PRIOR, PRIOR, SHRINK_CATCH, SHRINK_CATCH,
           SHRINK_CATCH, SHRINK_CATCH, REC_BAND["p10"],
           SHRINK_CATCH, SHRINK_CATCH, REC_BAND["p90"]])
+
+    # Rushing touchdowns. Without these a running back is missing most of
+    # how he actually scores in fantasy, so the whole board tilts to receivers.
+    con.execute("""
+        WITH pr AS (
+            SELECT player_id, sum(carries) AS car, sum(rushing_tds) AS td
+            FROM raw.stats_player_week
+            WHERE season = ? AND season_type = 'REG'
+            GROUP BY 1
+        ),
+        lg AS (
+            SELECT sum(rushing_tds) / nullif(sum(carries), 0) AS r
+            FROM raw.stats_player_week
+            WHERE season = ? AND season_type = 'REG'
+        )
+        UPDATE mart.player_season_projection p SET
+            pr_rush_tds   = pr.td,
+            proj_rush_tds = round(p.proj_carries
+                * ((pr.td + lg.r * ?) / (pr.car + ?)), 1),
+            p10_rush_tds  = round(p.proj_carries
+                * ((pr.td + lg.r * ?) / (pr.car + ?)) * ?, 1),
+            p90_rush_tds  = round(p.proj_carries
+                * ((pr.td + lg.r * ?) / (pr.car + ?)) * ?, 1)
+        FROM pr, lg WHERE pr.player_id = p.gsis_id AND pr.car > 0
+          AND p.proj_carries IS NOT NULL
+    """, [PRIOR, PRIOR, RUSH_TD_K, RUSH_TD_K, RUSH_TD_K, RUSH_TD_K,
+          RUSH_TD_BAND["p10"], RUSH_TD_K, RUSH_TD_K, RUSH_TD_BAND["p90"]])
 
     # Quarterbacks rush. Leaving these NULL understated every mobile passer.
     con.execute("""

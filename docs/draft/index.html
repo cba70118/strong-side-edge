@@ -1,0 +1,113 @@
+<!-- Loader only. The ciphertext lives in payload-<build>.json and is
+     fetched with cache:'no-store', because GitHub Pages sends
+     Cache-Control: max-age=600 and an http-equiv meta cannot override it. -->
+<title>The Big Board</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<style>
+:root{--bg:#0B0D10;--panel:#14171C;--ink:#E9ECF1;--ink3:#868F9C;
+  --line:#262C35;--accent:#5B9BD8;--neg:#d2666b}
+@media (prefers-color-scheme:light){:root{--bg:#EFF1F3;--panel:#FFFFFF;
+  --ink:#0B0D10;--ink3:#697079;--line:#DCE0E6;--accent:#12507E}}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:grid;place-items:center;
+  background:var(--bg);color:var(--ink);
+  font-family:'IBM Plex Sans',system-ui,-apple-system,Segoe UI,sans-serif}
+.gate{width:min(430px,92vw);background:var(--panel);
+  border:1px solid var(--line);padding:30px 28px 24px}
+h1{margin:0;font-size:26px;font-weight:700;letter-spacing:-.01em;
+  text-transform:uppercase;line-height:1;
+  font-family:'IBM Plex Sans Condensed','IBM Plex Sans',sans-serif}
+p{color:var(--ink3);font-size:12.5px;line-height:1.55;margin:9px 0 0}
+form{display:flex;gap:0;margin-top:20px;border:1px solid var(--line)}
+input{flex:1;font:inherit;font-size:14px;background:none;border:0;
+  color:var(--ink);padding:11px 12px}
+input:focus{outline:2px solid var(--accent);outline-offset:-2px}
+button{font:inherit;font-size:10px;font-weight:600;letter-spacing:.14em;
+  text-transform:uppercase;cursor:pointer;background:var(--ink);
+  color:var(--panel);border:0;padding:0 18px}
+.err{color:var(--neg);font-size:12px;margin-top:11px;min-height:17px}
+.lbl{font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--ink3)}
+.meta{font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--ink3);margin-top:14px;display:flex;gap:12px;flex-wrap:wrap}
+</style>
+<div class="gate">
+  <div class="lbl">NFL 2026</div>
+  <h1>The Big Board</h1>
+  <p>Encrypted. The passphrase is checked by decrypting the content, not by
+     comparing a string, so there is nothing here to read without it.</p>
+  <form id="f" autocomplete="off">
+    <input id="p" type="password" placeholder="Passphrase"
+           aria-label="Passphrase" autofocus>
+    <button type="submit">Open</button>
+  </form>
+  <div class="err" id="e" role="status"></div>
+  <div class="meta"><span>build <span id="b">checking</span></span>
+    <span id="cap"></span></div>
+</div>
+<script>
+const b64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+let PAY=null;
+
+/* The manifest is ALWAYS fetched fresh. A cached index.html is then harmless,
+   because it still learns the current payload filename from here. */
+async function manifest(){
+  const r=await fetch('manifest.json?t='+Date.now(),{cache:'no-store'});
+  if(!r.ok) throw new Error('manifest '+r.status);
+  return r.json();
+}
+async function load(){
+  const m=await manifest();
+  document.getElementById('b').textContent=m.build;
+  if(m.captured) document.getElementById('cap').textContent='lines '+m.captured;
+  const r=await fetch(m.payload+'?t='+Date.now(),{cache:'no-store'});
+  if(!r.ok) throw new Error('payload '+r.status);
+  PAY=await r.json();
+}
+const ready=load().catch(e=>{
+  document.getElementById('e').textContent='Could not load the payload: '+
+    e.message;
+});
+
+document.getElementById('f').addEventListener('submit',async ev=>{
+  ev.preventDefault();
+  const err=document.getElementById('e');
+  const pass=document.getElementById('p').value.trim();
+  if(!pass){ err.textContent='Enter the passphrase.'; return; }
+  if(!(window.crypto&&crypto.subtle)){
+    err.textContent='This browser exposes no WebCrypto over https.'; return;
+  }
+  await ready;
+  if(!PAY){ err.textContent='Payload not loaded yet. Try again.'; return; }
+
+  /* STEP 1 - decrypt. ONLY a failure here is a wrong passphrase. */
+  let html;
+  try{
+    err.textContent='Decrypting...';
+    const base=await crypto.subtle.importKey('raw',
+      new TextEncoder().encode(pass),'PBKDF2',false,['deriveKey']);
+    const key=await crypto.subtle.deriveKey(
+      {name:'PBKDF2',salt:b64(PAY.salt),iterations:PAY.iter,hash:'SHA-256'},
+      base,{name:'AES-GCM',length:256},false,['decrypt']);
+    html=new TextDecoder('utf-8').decode(await crypto.subtle.decrypt(
+      {name:'AES-GCM',iv:b64(PAY.nonce)},key,b64(PAY.data)));
+  }catch(e){
+    err.textContent='Wrong passphrase.'; return;
+  }
+
+  /* STEP 2 - render. Not a passphrase problem and it does not claim to be. */
+  err.textContent='Opening...';
+  try{
+    location.replace(URL.createObjectURL(
+      new Blob([html],{type:'text/html;charset=utf-8'})));
+  }catch(e1){
+    try{
+      document.open('text/html','replace');
+      document.write(html); document.close();
+    }catch(e2){
+      err.textContent='Decrypted, but rendering failed: '+((e2&&e2.message)||e2);
+    }
+  }
+});
+</script>
