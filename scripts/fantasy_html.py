@@ -98,14 +98,25 @@ h2 + .lead{color:var(--ink2);margin:0 0 14px;max-width:58ch}
 .now .why{color:var(--ink2);font-size:16px;margin-top:12px;max-width:54ch;
   line-height:1.55}
 
-.ctl{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:30px 0 0}
-.ctl button{font:inherit;font-size:14px;padding:9px 16px;border-radius:999px;
+.tabs{display:flex;flex-wrap:wrap;gap:8px;align-items:center;
+  margin:14px 0 0;border-bottom:2px solid var(--line);padding-bottom:12px}
+.tab{font:inherit;font-size:14.5px;padding:9px 16px;border-radius:999px;
   background:var(--card);color:var(--ink2);border:1px solid var(--line);
-  cursor:pointer}
-.ctl button[aria-pressed="true"]{background:var(--plum);color:var(--card);
+  cursor:pointer;font-weight:700}
+.tab[aria-selected="true"]{background:var(--plum);color:var(--card);
   border-color:var(--plum)}
-.ctl .spacer{flex:1 1 auto}
-.ctl .reset{border-style:dashed;font-size:13px}
+.tabs .spacer{flex:1 1 auto}
+.tabs .cnt{color:var(--ink3);font-size:13px}
+.reset{font:inherit;font-size:13px;padding:8px 14px;border-radius:999px;
+  background:transparent;color:var(--ink3);border:1px dashed var(--line);
+  cursor:pointer}
+.panel{margin-top:4px}
+.strat{background:var(--plum-soft);border-radius:14px;padding:20px 24px;
+  margin:22px 0 8px}
+.strat h3{font-family:Fraunces,Georgia,serif;font-size:21px;margin:0;
+  font-weight:600;color:var(--ink)}
+.strat p{margin:8px 0 0;color:var(--ink2);max-width:58ch;line-height:1.55}
+.strat b{color:var(--ink)}
 button:focus-visible,.row:focus-visible{outline:2.5px solid var(--plum);
   outline-offset:2px}
 
@@ -155,7 +166,11 @@ JS = """
   function nextUp(){
     var el=document.getElementById('nowCard');
     if(!el) return;
-    var pick=rows.filter(function(r){ return !taken[r.dataset.id]; })[0];
+    /* Read the overall board only. Every player also has a copy inside his
+       position tab, and those are ordered within the position, so filtering
+       across all of them could hand back the wrong "next". */
+    var order=[].slice.call(document.querySelectorAll('#pan-ALL .row'));
+    var pick=order.filter(function(r){ return !taken[r.dataset.id]; })[0];
     if(!pick){
       el.innerHTML='<div class="lbl">All done</div><div class="nm">'+
         'Everyone has been drafted</div>'; return;
@@ -190,20 +205,16 @@ JS = """
   if(reset) reset.addEventListener('click',function(){
     taken={}; try{ localStorage.removeItem(KEY); }catch(e){} paint();
   });
-  var btns=[].slice.call(document.querySelectorAll('.ctl [data-pos]'));
-  btns.forEach(function(b){
+  var tabs=[].slice.call(document.querySelectorAll('.tab'));
+  tabs.forEach(function(b){
     b.addEventListener('click',function(){
-      btns.forEach(function(x){
-        x.setAttribute('aria-pressed', String(x===b)); });
-      var p=b.dataset.pos;
-      rows.forEach(function(r){
-        r.hidden = !(p==='ALL' || r.dataset.pos===p); });
-      [].slice.call(document.querySelectorAll('.board')).forEach(function(g){
-        var any=[].slice.call(g.querySelectorAll('.row'))
-                  .some(function(r){ return !r.hidden; });
-        g.hidden=!any;
-        var t=g.previousElementSibling;
-        if(t && t.classList.contains('tier')) t.hidden=!any;
+      tabs.forEach(function(x){
+        x.setAttribute('aria-selected', String(x===b)); });
+      /* Panels, not row filtering. Every player appears in the big board AND
+         in his own position tab, so the same name is two DOM nodes; the
+         crossed-off state is keyed on the name so both stay in step. */
+      [].slice.call(document.querySelectorAll('.panel')).forEach(function(s){
+        s.hidden = (s.id !== 'pan-'+b.dataset.pos);
       });
     });
   });
@@ -227,44 +238,132 @@ TIERS = [
 ]
 
 
+# Per-position advice. The numbers are filled in from the projections at build
+# time, so the argument on the page is the same data the board is ranked on.
+STRATEGY = {
+    "RB": {
+        "head": "Take two of these early",
+        "body": ("The gap between the best running back and the twelfth is "
+                 "<b>{gap:.0f} points</b> &mdash; about {perwk:.0f} a week, and "
+                 "the biggest gap at any position. That is why running backs "
+                 "go first. You start two every week, they get hurt more than "
+                 "anyone, and the good ones almost never come free later. "
+                 "Spend early picks here and do not feel clever about "
+                 "waiting."),
+    },
+    "WR": {
+        "head": "Take three, mostly early",
+        "body": ("You start three receivers, more than any other position, so "
+                 "you simply need more of them. Best to twelfth is "
+                 "<b>{gap:.0f} points</b>. They also stay healthier than "
+                 "running backs, which makes them the safer half of your "
+                 "first few picks."),
+    },
+    "TE": {
+        "head": "Get the best one, or wait a long time",
+        "body": ("This position has a cliff. The top tight end is "
+                 "<b>{cliff:.0f} points clear of the second</b>, and after "
+                 "that the whole group is bunched: fourth to twelfth is only "
+                 "{flat:.0f} points apart, roughly {flatwk:.1f} a week. So "
+                 "either take the one at the top early, or ignore the "
+                 "position until late and take whoever is left. The middle is "
+                 "where picks go to die."),
+    },
+    "QB": {
+        "head": "Wait. Really.",
+        "body": ("Quarterbacks put up the biggest raw numbers, which fools "
+                 "people every year. But you only start one, so what matters "
+                 "is the gap to the next one you could have had &mdash; and "
+                 "that gap is only <b>{gap:.0f} points</b> between the best "
+                 "and the twelfth. About {perwk:.0f} a week. Take one in the "
+                 "back half of your draft and spend the early picks where the "
+                 "gaps are four times bigger."),
+    },
+}
+
+
+def strategy_for(pos, lst):
+    """Fill the advice in from this position's actual numbers."""
+    s = STRATEGY.get(pos)
+    if not s or len(lst) < 12:
+        return ""
+    pts = sorted((p["pts"] for p in lst), reverse=True)
+    gap = pts[0] - pts[11]
+    d = {"gap": gap, "perwk": gap / 17.0,
+         "cliff": pts[0] - pts[1],
+         "flat": pts[3] - pts[11] if len(pts) > 11 else 0,
+         "flatwk": (pts[3] - pts[11]) / 17.0 if len(pts) > 11 else 0}
+    return (f'<div class="strat"><h3>{e(s["head"])}</h3>'
+            f'<p>{s["body"].format(**d)}</p></div>')
+
+
 def render(payload):
     ps = [p for p in payload["players"] if p.get("adp") is not None]
     ps.sort(key=lambda p: p["our_pick"])
     meta = payload.get("meta", {})
 
-    body = ""
+    by_pos = {}
+    for p in ps:
+        by_pos.setdefault(p["pos"], []).append(p)
+
+    def tag_for(p):
+        v = p.get("value")
+        if p.get("thin") and v is not None and v <= -12:
+            return "t-fade", "they know something we do not"
+        if v is not None and v >= 12:
+            return "t-early", "grab early"
+        if v is not None and v <= -12:
+            return "t-fade", "let them go"
+        return "t-none", "priced right"
+
+    def card(p, num):
+        cls, lab = tag_for(p)
+        longpos = POS_LONG.get(p["pos"], p["pos"])
+        bye = (f' &middot; has week {p["bye"]} off' if p.get("bye") else "")
+        return (
+            f'<button class="row" type="button" aria-pressed="false"'
+            f' data-id="{e(p["name"])}" data-pos="{e(p["pos"])}"'
+            f' data-name="{e(p["name"])}" data-team="{e(p["team"])}"'
+            f' data-long="{e(longpos)}" data-bye="{e(p.get("bye") or "")}"'
+            f' data-why="{e(p.get("why") or "")}">'
+            f'<span class="rk">{num}</span>'
+            f'<span><span class="nm">{e(p["name"])}</span>'
+            f'<span class="meta">{e(longpos)} for {e(p["team"])}{bye}</span>'
+            f'<span class="why">{p.get("why") or ""}</span></span>'
+            f'<span class="tag {cls}">{e(lab)}</span></button>')
+
+    # the overall board, in tiers
+    overall = ""
     for hi, lo, title, blurb in TIERS:
         grp = [p for p in ps if lo < p["edge"] <= hi]
         if not grp:
             continue
-        body += (f'<div class="tier"><span class="t">{e(title)}</span>'
-                 f'<span class="d">{e(blurb)}</span></div><div class="board">')
-        for p in grp:
-            v = p.get("value")
-            if p.get("thin") and v is not None and v <= -12:
-                cls, lab = "t-fade", "they know something we do not"
-            elif v is not None and v >= 12:
-                cls, lab = "t-early", "grab early"
-            elif v is not None and v <= -12:
-                cls, lab = "t-fade", "let them go"
-            else:
-                cls, lab = "t-none", "priced right"
-            why = p.get("why") or ""
-            longpos = POS_LONG.get(p["pos"], p["pos"])
-            bye = (f' &middot; has week {p["bye"]} off' if p.get("bye") else "")
-            body += (
-                f'<button class="row" type="button" aria-pressed="false"'
-                f' data-id="{e(p["name"])}" data-pos="{e(p["pos"])}"'
-                f' data-name="{e(p["name"])}" data-team="{e(p["team"])}"'
-                f' data-long="{e(longpos)}" data-bye="{e(p.get("bye") or "")}"'
-                f' data-why="{e(why)}">'
-                f'<span class="rk">{p["our_pick"]}</span>'
-                f'<span><span class="nm">{e(p["name"])}</span>'
-                f'<span class="meta">{e(longpos)} for {e(p["team"])}{bye}'
-                f'</span><span class="why">{why}</span></span>'
-                f'<span class="tag {cls}">{e(lab)}</span>'
-                f'</button>')
-        body += "</div>"
+        overall += (f'<div class="tier"><span class="t">{e(title)}</span>'
+                    f'<span class="d">{e(blurb)}</span></div>'
+                    f'<div class="board">'
+                    + "".join(card(p, p["our_pick"]) for p in grp)
+                    + "</div>")
+
+    # one panel per position: advice first, then that position in order
+    panels = (f'<section class="panel" id="pan-ALL" role="tabpanel" '
+              f'aria-labelledby="tab-ALL">{overall}</section>')
+    tabs = ('<button class="tab" id="tab-ALL" data-pos="ALL" role="tab" '
+            'aria-selected="true">Big board</button>')
+    for pos in ("RB", "WR", "TE", "QB"):
+        lst = by_pos.get(pos) or []
+        if not lst:
+            continue
+        lst = sorted(lst, key=lambda p: p["our_pick"])
+        tabs += (f'<button class="tab" id="tab-{pos}" data-pos="{pos}" '
+                 f'role="tab" aria-selected="false">'
+                 f'{e(POS_LONG[pos])}s</button>')
+        panels += (
+            f'<section class="panel" id="pan-{pos}" role="tabpanel" hidden '
+            f'aria-labelledby="tab-{pos}">'
+            + strategy_for(pos, lst)
+            + '<div class="board">'
+            + "".join(card(p, i) for i, p in enumerate(lst, 1))
+            + "</div></section>")
 
     n_thin = sum(1 for p in ps if p.get("thin"))
     return f"""<title>The Big Board</title>
@@ -275,9 +374,9 @@ def render(payload):
 <div class="wrap">
 <p class="kicker">Fantasy football &middot; 2026</p>
 <h1>The Big Board</h1>
-<p class="sub">A draft list for people who do not follow football. It is already
-in the order you should pick. Take the name at the top that nobody else has
-taken yet.</p>
+<p class="sub">A draft list for people who do not follow football. It is
+already in the order you should pick. Take the name at the top that nobody
+else has taken yet.</p>
 
 <div class="explain">
 <h3>How a draft works</h3>
@@ -290,34 +389,31 @@ touchdowns they score. <b>Most points at the end wins.</b></li>
 which is exactly what this page tells you.</li>
 </ol>
 <div class="jobs">
-<div class="job"><b>Running back</b><span>Carries the ball. Scores a lot. You
-want two, and early.</span></div>
-<div class="job"><b>Receiver</b><span>Catches the ball. You want three. Take
-them early too.</span></div>
-<div class="job"><b>Tight end</b><span>Also catches, but fewer. One is
-enough.</span></div>
-<div class="job"><b>Quarterback</b><span>Throws the ball. Only one plays for
-you, so there is no rush.</span></div>
+<div class="job"><b>Running back</b><span>Carries the ball. You start two, and
+they are the hardest to replace.</span></div>
+<div class="job"><b>Receiver</b><span>Catches the ball. You start three, so
+you need the most of these.</span></div>
+<div class="job"><b>Tight end</b><span>Also catches, but fewer. You start
+one.</span></div>
+<div class="job"><b>Quarterback</b><span>Throws the ball. You start one, and
+they can wait.</span></div>
 </div>
 </div>
 
 <h2>Who to pick right now</h2>
-<p class="lead">Tap any name below to cross it off once somebody takes them.
-This updates as you go.</p>
+<p class="lead">Tap any name to cross it off once somebody takes them. This
+card always shows who you should take next.</p>
 <div class="now" id="nowCard"></div>
 
-<div class="ctl">
-  <button data-pos="ALL" aria-pressed="true">Everyone</button>
-  <button data-pos="RB" aria-pressed="false">Running backs</button>
-  <button data-pos="WR" aria-pressed="false">Receivers</button>
-  <button data-pos="TE" aria-pressed="false">Tight ends</button>
-  <button data-pos="QB" aria-pressed="false">Quarterbacks</button>
+<h2>The board</h2>
+<p class="lead">The big board is every player in draft order. The other tabs
+break it down by position, each with a note on how to play that spot.</p>
+<div class="tabs" role="tablist">{tabs}
   <span class="spacer"></span>
-  <span style="color:var(--ink3);font-size:13px" id="takenCount"></span>
+  <span class="cnt" id="takenCount"></span>
   <button class="reset" id="reset">Start over</button>
 </div>
-
-{body}
+{panels}
 
 <div class="note">
 <p style="margin:0 0 10px"><b>What the little labels mean</b></p>
@@ -336,7 +432,7 @@ right and we are behind. Do not fade these on our say-so.</p>
 <p class="foot">The order is not simply who scores the most points. A
 quarterback throws for thousands of yards, but only one of them plays for you
 each week, so what matters is how much better someone is than the next person
-you could have had at the same spot. That is why quarterbacks sit low here.</p>
+you could have had at the same spot. That is why quarterbacks sit low.</p>
 <p class="foot">Where other people are drafting each player comes from
 {meta.get('total_drafts', 0):,} real practice drafts run
 {e(meta.get('start_date'))} to {e(meta.get('end_date'))}. Our projections do not
